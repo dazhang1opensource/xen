@@ -77,11 +77,12 @@ endif
 
 ACPI_PATH  = $(XEN_ROOT)/tools/libacpi
 ACPI_FILES = dsdt_pvh.c
-ACPI_OBJS  = $(patsubst %.c,%.o,$(ACPI_FILES)) build.o static_tables.o
+ACPI_OBJS  = $(patsubst %.c,%.o,$(ACPI_FILES)) build.o static_tables.o aml_build.o
 $(ACPI_FILES): acpi
 $(ACPI_OBJS): CFLAGS += -I. -DLIBACPI_STDUTILS=\"$(CURDIR)/libxl_x86_acpi.h\"
 vpath build.c $(ACPI_PATH)/
 vpath static_tables.c $(ACPI_PATH)/
+vpath aml_build.c $(ACPI_PATH)/
 LIBXL_OBJS-$(CONFIG_X86) += $(ACPI_OBJS)
 
 .PHONY: acpi
