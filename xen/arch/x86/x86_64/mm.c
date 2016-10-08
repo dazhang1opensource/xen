@@ -317,7 +317,8 @@ void destroy_m2p_mapping(struct mem_hotadd_info *info)
  * spfn/epfn: the pfn ranges to be setup
  * free_s/free_e: the pfn ranges that is free still
  */
-static int setup_compat_m2p_table(struct mem_hotadd_info *info)
+static int setup_compat_m2p_table(struct mem_hotadd_info *info,
+                                  struct mem_hotadd_info *alloc_info)
 {
     unsigned long i, va, smap, emap, rwva, epfn = info->epfn, mfn;
     unsigned int n;
@@ -371,7 +372,7 @@ static int setup_compat_m2p_table(struct mem_hotadd_info *info)
         if ( n == CNT )
             continue;
 
-        mfn = alloc_hotadd_mfn(info);
+        mfn = alloc_hotadd_mfn(alloc_info);
         err = map_pages_to_xen(rwva, mfn, 1UL << PAGETABLE_ORDER,
                                PAGE_HYPERVISOR);
         if ( err )
@@ -391,7 +392,8 @@ static int setup_compat_m2p_table(struct mem_hotadd_info *info)
  * Allocate and map the machine-to-phys table.
  * The L3 for RO/RWRW MPT and the L2 for compatible MPT should be setup already
  */
-static int setup_m2p_table(struct mem_hotadd_info *info)
+static int setup_m2p_table(struct mem_hotadd_info *info,
+                           struct mem_hotadd_info *alloc_info)
 {
     unsigned long i, va, smap, emap;
     unsigned int n;
@@ -440,7 +442,7 @@ static int setup_m2p_table(struct mem_hotadd_info *info)
                 break;
         if ( n < CNT )
         {
-            unsigned long mfn = alloc_hotadd_mfn(info);
+            unsigned long mfn = alloc_hotadd_mfn(alloc_info);
 
             ret = map_pages_to_xen(
                         RDWR_MPT_VIRT_START + i * sizeof(unsigned long),
@@ -485,7 +487,7 @@ static int setup_m2p_table(struct mem_hotadd_info *info)
 #undef CNT
 #undef MFN
 
-    ret = setup_compat_m2p_table(info);
+    ret = setup_compat_m2p_table(info, alloc_info);
 error:
     return ret;
 }
@@ -1427,7 +1429,7 @@ int memory_add(unsigned long spfn, unsigned long epfn, unsigned int pxm)
     total_pages += epfn - spfn;
 
     set_pdx_range(spfn, epfn);
-    ret = setup_m2p_table(&info);
+    ret = setup_m2p_table(&info, &info);
 
     if ( ret )
         goto destroy_m2p;
