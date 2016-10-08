@@ -972,6 +972,8 @@ void hvmloader_acpi_build_tables(struct acpi_config *config,
     ctxt.mem_ops.free = acpi_mem_free;
     ctxt.mem_ops.v2p = acpi_v2p;
     ctxt.mem_ops.p2v = acpi_p2v;
+    ctxt.min_alloc_unit = PAGE_SIZE;
+    ctxt.min_alloc_align = 16;
 
     acpi_build_tables(&ctxt, config);
 

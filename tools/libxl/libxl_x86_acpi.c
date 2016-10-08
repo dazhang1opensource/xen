@@ -187,6 +187,8 @@ int libxl__dom_load_acpi(libxl__gc *gc,
     libxl_ctxt.c.mem_ops.v2p = virt_to_phys;
     libxl_ctxt.c.mem_ops.p2v = phys_to_virt;
     libxl_ctxt.c.mem_ops.free = acpi_mem_free;
+    libxl_ctxt.c.min_alloc_unit = libxl_ctxt.page_size;
+    libxl_ctxt.c.min_alloc_align = 16;
 
     rc = init_acpi_config(gc, dom, b_info, &config);
     if (rc) {

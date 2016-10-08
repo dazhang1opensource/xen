@@ -47,6 +47,9 @@ struct acpi_ctxt {
         unsigned long (*v2p)(struct acpi_ctxt *ctxt, void *v);
         void *(*p2v)(struct acpi_ctxt *ctxt, unsigned long p);
     } mem_ops;
+
+    uint32_t min_alloc_unit;
+    uint32_t min_alloc_align;
 };
 
 struct acpi_config {
