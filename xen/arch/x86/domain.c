@@ -61,6 +61,7 @@
 #include <asm/amd.h>
 #include <xen/numa.h>
 #include <xen/iommu.h>
+#include <xen/pmem.h>
 #include <compat/vcpu.h>
 #include <asm/psr.h>
 
@@ -2509,6 +2510,10 @@ int domain_relinquish_resources(struct domain *d)
     {
     case RELMEM_not_started:
         ret = pci_release_devices(d);
+        if ( ret )
+            return ret;
+
+        ret = pmem_teardown(d);
         if ( ret )
             return ret;
 

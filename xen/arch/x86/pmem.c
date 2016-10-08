@@ -282,3 +282,44 @@ int pmem_populate(struct xen_pmemmap_args *args)
     args->nr_done = i;
     return rc;
 }
+
+static int pmem_teardown_preemptible(struct domain *d, int *preempted)
+{
+    struct page_info *pg, *next;
+    int rc = 0;
+
+    spin_lock(&d->pmem_lock);
+
+    page_list_for_each_safe (pg, next, &d->pmem_page_list )
+    {
+        BUG_ON(page_get_owner(pg) != d);
+        BUG_ON(page_state_is(pg, free));
+
+        page_list_del(pg, &d->pmem_page_list);
+        page_set_owner(pg, NULL);
+        pg->count_info = (pg->count_info & ~PGC_count_mask) | PGC_state_free;
+
+        if ( preempted && hypercall_preempt_check() )
+        {
+            *preempted = 1;
+            goto out;
+        }
+    }
+
+ out:
+    spin_unlock(&d->pmem_lock);
+    return rc;
+}
+
+int pmem_teardown(struct domain *d)
+{
+    int preempted = 0;
+
+    ASSERT(d->is_dying);
+    ASSERT(d != current->domain);
+
+    if ( !has_hvm_container_domain(d) || !paging_mode_translate(d) )
+        return -EINVAL;
+
+    return pmem_teardown_preemptible(d, &preempted);
+}
