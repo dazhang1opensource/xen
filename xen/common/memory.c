@@ -24,6 +24,7 @@
 #include <xen/numa.h>
 #include <xen/mem_access.h>
 #include <xen/trace.h>
+#include <xen/pmem.h>
 #include <asm/current.h>
 #include <asm/hardirq.h>
 #include <asm/p2m.h>
@@ -1328,6 +1329,36 @@ long do_memory_op(unsigned long cmd, XEN_GUEST_HANDLE_PARAM(void) arg)
         break;
     }
 #endif
+
+    case XENMEM_populate_pmemmap:
+    {
+        struct xen_pmemmap pmemmap;
+        struct xen_pmemmap_args args;
+
+        if ( copy_from_guest(&pmemmap, arg, 1) )
+            return -EFAULT;
+
+        d = rcu_lock_domain_by_any_id(pmemmap.domid);
+        if ( !d )
+            return -EINVAL;
+
+        args.domain = d;
+        args.mfn = pmemmap.mfn;
+        args.gpfn = pmemmap.gpfn;
+        args.nr_mfns = pmemmap.nr_mfns;
+        args.nr_done = start_extent;
+        args.preempted = 0;
+
+        rc = pmem_populate(&args);
+        rcu_unlock_domain(d);
+
+        if ( !rc && args.preempted )
+            return hypercall_create_continuation(
+                __HYPERVISOR_memory_op, "lh",
+                op | (args.nr_done << MEMOP_EXTENT_SHIFT), arg);
+
+        break;
+    }
 
     default:
         rc = arch_memory_op(cmd, arg);

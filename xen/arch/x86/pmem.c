@@ -24,6 +24,9 @@
 #include <xen/spinlock.h>
 #include <xen/pmem.h>
 #include <xen/iocap.h>
+#include <xen/sched.h>
+#include <xen/event.h>
+#include <xen/paging.h>
 #include <asm-x86/mm.h>
 
 /*
@@ -61,6 +64,48 @@ static int check_reserved_size(unsigned long rsv_mfns, unsigned long total_mfns)
     return rsv_mfns >=
         ((sizeof(struct page_info) * total_mfns) >> PAGE_SHIFT) +
         ((sizeof(*machine_to_phys_mapping) * total_mfns) >> PAGE_SHIFT);
+}
+
+static int is_data_mfn(unsigned long mfn)
+{
+    struct list_head *cur;
+    int data = 0;
+
+    ASSERT(spin_is_locked(&pmem_list_lock));
+
+    list_for_each(cur, &pmem_list)
+    {
+        struct pmem *pmem = list_entry(cur, struct pmem, link);
+
+        if ( pmem->data_spfn <= mfn && mfn < pmem->data_epfn )
+        {
+            data = 1;
+            break;
+        }
+    }
+
+    return data;
+}
+
+static int pmem_page_valid(struct page_info *page, struct domain *d)
+{
+    /* only data area can be mapped to guest */
+    if ( !is_data_mfn(page_to_mfn(page)) )
+    {
+        dprintk(XENLOG_DEBUG, "pmem: mfn 0x%lx is not a pmem data page\n",
+                page_to_mfn(page));
+        return 0;
+    }
+
+    /* inuse/offlined/offlining pmem page cannot be mapped to guest */
+    if ( !page_state_is(page, free) )
+    {
+        dprintk(XENLOG_DEBUG, "pmem: invalid page state of mfn 0x%lx: 0x%lx\n",
+                page_to_mfn(page), page->count_info & PGC_state);
+        return 0;
+    }
+
+    return 1;
 }
 
 static int pmem_add_check(unsigned long spfn, unsigned long epfn,
@@ -158,4 +203,82 @@ int pmem_add(unsigned long spfn, unsigned long epfn,
 
  out:
     return ret;
+}
+
+static int pmem_assign_pages(struct domain *d,
+                             struct page_info *pg, unsigned int order)
+{
+    int rc = 0;
+    unsigned long i;
+
+    spin_lock(&d->pmem_lock);
+
+    if ( unlikely(d->is_dying) )
+    {
+        rc = -EINVAL;
+        goto out;
+    }
+
+    for ( i = 0; i < (1 << order); i++ )
+    {
+        ASSERT(page_get_owner(&pg[i]) == NULL);
+        ASSERT((pg[i].count_info & ~(PGC_allocated | 1)) == 0);
+        page_set_owner(&pg[i], d);
+        smp_wmb();
+        pg[i].count_info = PGC_allocated | 1;
+        page_list_add_tail(&pg[i], &d->pmem_page_list);
+    }
+
+ out:
+    spin_unlock(&d->pmem_lock);
+    return rc;
+}
+
+int pmem_populate(struct xen_pmemmap_args *args)
+{
+    struct domain *d = args->domain;
+    unsigned long i, mfn, gpfn;
+    struct page_info *page;
+    int rc = 0;
+
+    if ( !has_hvm_container_domain(d) || !paging_mode_translate(d) )
+        return -EINVAL;
+
+    for ( i = args->nr_done, mfn = args->mfn + i, gpfn = args->gpfn + i;
+          i < args->nr_mfns;
+          i++, mfn++, gpfn++ )
+    {
+        if ( i != args->nr_done && hypercall_preempt_check() )
+        {
+            args->preempted = 1;
+            goto out;
+        }
+
+        page = mfn_to_page(mfn);
+
+        spin_lock(&pmem_list_lock);
+        if ( !pmem_page_valid(page, d) )
+        {
+            dprintk(XENLOG_DEBUG, "pmem: MFN 0x%lx not a valid pmem page\n", mfn);
+            spin_unlock(&pmem_list_lock);
+            rc = -EINVAL;
+            goto out;
+        }
+        page->count_info = PGC_state_inuse;
+        spin_unlock(&pmem_list_lock);
+
+        page->u.inuse.type_info = 0;
+
+        guest_physmap_add_page(d, _gfn(gpfn), _mfn(mfn), 0);
+        if ( pmem_assign_pages(d, page, 0) )
+        {
+            guest_physmap_remove_page(d, _gfn(gpfn), _mfn(mfn), 0);
+            rc = -EFAULT;
+            goto out;
+        }
+    }
+
+ out:
+    args->nr_done = i;
+    return rc;
 }

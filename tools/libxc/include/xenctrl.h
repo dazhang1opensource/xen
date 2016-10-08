@@ -2710,6 +2710,14 @@ int xc_livepatch_revert(xc_interface *xch, char *name, uint32_t timeout);
 int xc_livepatch_unload(xc_interface *xch, char *name, uint32_t timeout);
 int xc_livepatch_replace(xc_interface *xch, char *name, uint32_t timeout);
 
+/**
+ * Map host pmem pages at PFNs @mfn ~ (@mfn + @nr_mfns - 1) to
+ * guest physical pages at guest PFNs @gpfn ~ (@gpfn + @nr_mfns - 1)
+ */
+int xc_domain_populate_pmemmap(xc_interface *xch, uint32_t domid,
+                               xen_pfn_t mfn, xen_pfn_t gpfn,
+                               unsigned int nr_mfns);
+
 /* Compat shims */
 #include "xenctrl_compat.h"
 

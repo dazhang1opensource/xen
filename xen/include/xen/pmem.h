@@ -24,8 +24,18 @@
 
 #include <xen/types.h>
 
+struct xen_pmemmap_args {
+    struct domain *domain;
+    xen_pfn_t mfn;
+    xen_pfn_t gpfn;
+    unsigned int nr_mfns;
+    unsigned int nr_done;
+    int preempted;
+};
+
 int pmem_add(unsigned long spfn, unsigned long epfn,
              unsigned long rsv_spfn, unsigned long rsv_epfn,
              unsigned long data_spfn, unsigned long data_epfn);
+int pmem_populate(struct xen_pmemmap_args *args);
 
 #endif /* __XEN_PMEM_H__ */
