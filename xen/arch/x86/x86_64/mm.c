@@ -792,7 +792,8 @@ static int setup_frametable_chunk(void *start, void *end,
     return 0;
 }
 
-static int extend_frame_table(struct mem_hotadd_info *info)
+static int extend_frame_table(struct mem_hotadd_info *info,
+                              struct mem_hotadd_info *alloc_info)
 {
     unsigned long cidx, nidx, eidx, spfn, epfn;
 
@@ -818,9 +819,9 @@ static int extend_frame_table(struct mem_hotadd_info *info)
         nidx = find_next_bit(pdx_group_valid, eidx, cidx);
         if ( nidx >= eidx )
             nidx = eidx;
-        err = setup_frametable_chunk(pdx_to_page(cidx * PDX_GROUP_COUNT ),
+        err = setup_frametable_chunk(pdx_to_page(cidx * PDX_GROUP_COUNT),
                                      pdx_to_page(nidx * PDX_GROUP_COUNT),
-                                     info);
+                                     alloc_info);
         if ( err )
             return err;
 
@@ -1413,7 +1414,7 @@ int memory_add(unsigned long spfn, unsigned long epfn, unsigned int pxm)
     info.epfn = epfn;
     info.cur = spfn;
 
-    ret = extend_frame_table(&info);
+    ret = extend_frame_table(&info, &info);
     if (ret)
         goto destroy_frametable;
 
