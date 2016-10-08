@@ -26,6 +26,7 @@
 
 #include "_libxl_list.h"
 #include "libxl_internal.h"
+#include "libxl_nvdimm.h"
 
 /* #define DEBUG_RECEIVED */
 
@@ -1146,6 +1147,66 @@ out:
     return rc;
 }
 
+static int qmp_register_nvdimm_callback(libxl__qmp_handler *qmp,
+                                        const libxl__json_object *o,
+                                        void *unused)
+{
+    GC_INIT(qmp->ctx);
+    const libxl__json_object *obj = NULL;
+    const libxl__json_object *sub_obj = NULL;
+    int i = 0;
+    const char *mem_path;
+    uint64_t slot, spa, length;
+    int ret = 0;
+
+    for (i = 0; (obj = libxl__json_array_get(o, i)); i++) {
+        if (!libxl__json_object_is_map(obj))
+            continue;
+
+        sub_obj = libxl__json_map_get("slot", obj, JSON_INTEGER);
+        slot = libxl__json_object_get_integer(sub_obj);
+
+        sub_obj = libxl__json_map_get("mem-path", obj, JSON_STRING);
+        mem_path = libxl__json_object_get_string(sub_obj);
+        if (!mem_path) {
+            LOG(ERROR, "No mem-path is specified for NVDIMM #%" PRId64, slot);
+            ret = -EINVAL;
+            goto out;
+        }
+
+        sub_obj = libxl__json_map_get("spa", obj, JSON_INTEGER);
+        spa = libxl__json_object_get_integer(sub_obj);
+
+        sub_obj = libxl__json_map_get("length", obj, JSON_INTEGER);
+        length = libxl__json_object_get_integer(sub_obj);
+
+        LOG(DEBUG,
+            "vNVDIMM #%" PRId64 ": %s, spa 0x%" PRIx64 ", length 0x%" PRIx64,
+            slot, mem_path, spa, length);
+
+        ret = libxl_nvdimm_add_device(gc, qmp->domid, mem_path, spa, length);
+        if (ret) {
+            LOG(ERROR,
+                "Failed to add NVDIMM #%" PRId64
+                "(mem_path %s, spa 0x%" PRIx64 ", length 0x%" PRIx64 ") "
+                "to domain %d (err = %d)",
+                slot, mem_path, spa, length, qmp->domid, ret);
+            goto out;
+        }
+    }
+
+ out:
+    GC_FREE;
+    return ret;
+}
+
+static int libxl__qmp_query_nvdimms(libxl__qmp_handler *qmp)
+{
+    return qmp_synchronous_send(qmp, "query-nvdimms", NULL,
+                                qmp_register_nvdimm_callback,
+                                NULL, qmp->timeout);
+}
+
 int libxl__qmp_hmp(libxl__gc *gc, int domid, const char *command_line,
                    char **output)
 {
@@ -1186,6 +1247,9 @@ int libxl__qmp_initializations(libxl__gc *gc, uint32_t domid,
     }
     if (!ret) {
         ret = qmp_query_vnc(qmp);
+    }
+    if (!ret && guest_config->num_vnvdimms) {
+        ret = libxl__qmp_query_nvdimms(qmp);
     }
     libxl__qmp_close(qmp);
     return ret;
