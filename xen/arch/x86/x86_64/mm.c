@@ -1474,6 +1474,60 @@ destroy_frametable:
     return ret;
 }
 
+int pmem_setup(unsigned long spfn, unsigned long epfn,
+               unsigned long rsv_spfn, unsigned long rsv_epfn,
+               unsigned long data_spfn, unsigned long data_epfn)
+{
+    unsigned old_max = max_page, old_total = total_pages;
+    struct mem_hotadd_info info =
+        { .spfn = spfn, .epfn = epfn, .cur = spfn };
+    struct mem_hotadd_info rsv_info =
+        { .spfn = rsv_spfn, .epfn = rsv_epfn, .cur = rsv_spfn };
+    int ret;
+    unsigned long i;
+    struct page_info *pg;
+
+    if ( !mem_hotadd_check(spfn, epfn) )
+        return -EINVAL;
+
+    ret = extend_frame_table(&info, &rsv_info);
+    if ( ret )
+        goto destroy_frametable;
+
+    if ( max_page < epfn )
+    {
+        max_page = epfn;
+        max_pdx = pfn_to_pdx(max_page - 1) + 1;
+    }
+    total_pages += epfn - spfn;
+
+    set_pdx_range(spfn, epfn);
+    ret = setup_m2p_table(&info, &rsv_info);
+    if ( ret )
+        goto destroy_m2p;
+
+    share_hotadd_m2p_table(&info);
+
+    for ( i = spfn; i < epfn; i++ )
+    {
+        pg = mfn_to_page(i);
+        pg->count_info = (rsv_spfn <= i && i < rsv_info.cur) ?
+                         PGC_state_inuse : PGC_state_free;
+    }
+
+    return 0;
+
+destroy_m2p:
+    destroy_m2p_mapping(&info);
+    max_page = old_max;
+    total_pages = old_total;
+    max_pdx = pfn_to_pdx(max_page - 1) + 1;
+destroy_frametable:
+    cleanup_frame_table(&info);
+
+    return ret;
+}
+
 #include "compat/mm.c"
 
 /*

@@ -24,6 +24,7 @@
 #include <xen/pmstat.h>
 #include <xen/irq.h>
 #include <xen/symbols.h>
+#include <xen/pmem.h>
 #include <asm/current.h>
 #include <public/platform.h>
 #include <acpi/cpufreq/processor_perf.h>
@@ -821,6 +822,12 @@ ret_t do_platform_op(XEN_GUEST_HANDLE_PARAM(xen_platform_op_t) u_xenpf_op)
             ret = -EFAULT;
     }
     break;
+
+    case XENPF_pmem_add:
+        ret = pmem_add(op->u.pmem_add.spfn, op->u.pmem_add.epfn,
+                       op->u.pmem_add.rsv_spfn, op->u.pmem_add.rsv_epfn,
+                       op->u.pmem_add.data_spfn, op->u.pmem_add.data_epfn);
+        break;
 
     default:
         ret = -ENOSYS;

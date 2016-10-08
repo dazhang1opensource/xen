@@ -1360,6 +1360,7 @@ static int flask_platform_op(uint32_t op)
     case XENPF_cpu_offline:
     case XENPF_cpu_hotadd:
     case XENPF_mem_hotadd:
+    case XENPF_pmem_add:
         return 0;
 #endif
 

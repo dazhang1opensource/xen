@@ -608,6 +608,19 @@ struct xenpf_symdata {
 typedef struct xenpf_symdata xenpf_symdata_t;
 DEFINE_XEN_GUEST_HANDLE(xenpf_symdata_t);
 
+#define XENPF_pmem_add     64
+struct xenpf_pmem_add {
+    /* IN variables */
+    uint64_t spfn;      /* start PFN of the whole pmem region */
+    uint64_t epfn;      /* end PFN of the whole pmem region */
+    uint64_t rsv_spfn;  /* start PFN of the reserved area within the region */
+    uint64_t rsv_epfn;  /* end PFN of the reserved area within the region */
+    uint64_t data_spfn; /* start PFN of the data area within the region */
+    uint64_t data_epfn; /* end PFN of the data area within the region */
+};
+typedef struct xenpf_pmem_add xenpf_pmem_add_t;
+DEFINE_XEN_GUEST_HANDLE(xenpf_pmem_add_t);
+
 /*
  * ` enum neg_errnoval
  * ` HYPERVISOR_platform_op(const struct xen_platform_op*);
@@ -638,6 +651,7 @@ struct xen_platform_op {
         struct xenpf_core_parking      core_parking;
         struct xenpf_resource_op       resource_op;
         struct xenpf_symdata           symdata;
+        struct xenpf_pmem_add          pmem_add;
         uint8_t                        pad[128];
     } u;
 };

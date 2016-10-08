@@ -597,4 +597,8 @@ typedef struct mm_rwlock {
 
 extern const char zero_page[];
 
+int pmem_setup(unsigned long spfn, unsigned long epfn,
+               unsigned long rsv_spfn, unsigned long rsv_epfn,
+               unsigned long data_spfn, unsigned long data_epfn);
+
 #endif /* __ASM_X86_MM_H__ */
