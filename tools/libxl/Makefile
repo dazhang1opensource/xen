@@ -106,7 +106,7 @@ ifeq ($(CONFIG_NetBSD),y)
 LIBXL_OBJS-y += libxl_netbsd.o
 else
 ifeq ($(CONFIG_Linux),y)
-LIBXL_OBJS-y += libxl_linux.o
+LIBXL_OBJS-y += libxl_linux.o libxl_nvdimm.o
 else
 ifeq ($(CONFIG_FreeBSD),y)
 LIBXL_OBJS-y += libxl_freebsd.o
