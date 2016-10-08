@@ -225,6 +225,8 @@ const char *xenstore_read(const char *path, const char *default_resp);
  */
 int xenstore_write(const char *path, const char *value);
 
+const char *xenstore_directory(const char *path, uint32_t *len,
+                               const char *default_resp);
 
 /* Get a HVM param.
  */

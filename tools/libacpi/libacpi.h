@@ -50,6 +50,16 @@ struct acpi_ctxt {
 
     uint32_t min_alloc_unit;
     uint32_t min_alloc_align;
+
+    struct acpi_xs_ops {
+        const char *(*read)(struct acpi_ctxt *ctxt, const char *path);
+        int (*write)(struct acpi_ctxt *ctxt,
+                     const char *path, const char *value);
+        char **(*directory)(struct acpi_ctxt *ctxt,
+                            const char *path, unsigned int *num);
+    } xs_ops;
+
+    void *xs_opaque;
 };
 
 struct acpi_config {

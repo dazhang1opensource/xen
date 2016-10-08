@@ -296,6 +296,26 @@ int xenstore_write(const char *path, const char *value)
     return ret;
 }
 
+const char *xenstore_directory(const char *path, uint32_t *len,
+                               const char *default_resp)
+{
+    uint32_t type = 0;
+    const char *answer = NULL;
+
+    xenbus_send(XS_DIRECTORY,
+                path, strlen(path),
+                "", 1, /* nul separator */
+                NULL, 0);
+
+    if ( xenbus_recv(len, &answer, &type) || (type != XS_DIRECTORY) )
+        answer = NULL;
+
+    if ( (default_resp != NULL) && ((answer == NULL) || (*answer == '\0')) )
+        answer = default_resp;
+
+    return answer;
+}
+
 /*
  * Local variables:
  * mode: C
