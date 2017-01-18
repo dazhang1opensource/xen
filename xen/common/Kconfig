@@ -279,4 +279,12 @@ config CMDLINE_OVERRIDE
 
 	  This is used to work around broken bootloaders. This should
 	  be set to 'N' under normal conditions.
+
+config NVDIMM_PMEM
+	bool "Persistent memory support"
+	default n
+	---help---
+	  Enable support for NVDIMM in the persistent memory mode.
+
+	  If unsure, say N.
 endmenu
