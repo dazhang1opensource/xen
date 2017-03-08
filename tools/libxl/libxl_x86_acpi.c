@@ -98,6 +98,25 @@ static uint32_t acpi_lapic_id(unsigned cpu)
     return cpu * 2;
 }
 
+static const char *acpi_xs_read(struct acpi_ctxt *ctxt, const char *path)
+{
+    return libxl__xs_read((libxl__gc *)ctxt->xs_opaque, XBT_NULL, path);
+}
+
+static int acpi_xs_write(struct acpi_ctxt *ctxt,
+                         const char *path, const char *value)
+{
+    return libxl__xs_write_checked((libxl__gc *)ctxt->xs_opaque, XBT_NULL,
+                                   path, value);
+}
+
+static char **acpi_xs_directory(struct acpi_ctxt *ctxt,
+                                const char *path, unsigned int *num)
+{
+    return libxl__xs_directory((libxl__gc *)ctxt->xs_opaque, XBT_NULL,
+                               path, num);
+}
+
 static int init_acpi_config(libxl__gc *gc, 
                             struct xc_dom_image *dom,
                             const libxl_domain_build_info *b_info,
@@ -194,6 +213,11 @@ int libxl__dom_load_acpi(libxl__gc *gc,
     libxl_ctxt.c.mem_ops.free = acpi_mem_free;
 
     libxl_ctxt.c.min_alloc_byte_align = 16;
+
+    libxl_ctxt.c.xs_ops.read = acpi_xs_read;
+    libxl_ctxt.c.xs_ops.write = acpi_xs_write;
+    libxl_ctxt.c.xs_ops.directory = acpi_xs_directory;
+    libxl_ctxt.c.xs_opaque = gc;
 
     rc = init_acpi_config(gc, dom, b_info, &config);
     if (rc) {
