@@ -180,4 +180,11 @@ void acpi_reboot(void);
 void acpi_dmar_zap(void);
 void acpi_dmar_reinstate(void);
 
+#ifdef CONFIG_NVDIMM_PMEM
+void acpi_nfit_boot_init(void);
+bool acpi_nfit_boot_search_pmem(unsigned long smfn, unsigned long emfn,
+                                unsigned long *ret_smfn,
+                                unsigned long *ret_emfn);
+#endif /* CONFIG_NVDIMM_PMEM */
+
 #endif /*_LINUX_ACPI_H*/

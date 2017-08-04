@@ -1358,6 +1358,10 @@ void __init noreturn __start_xen(unsigned long mbi_p)
     BUILD_BUG_ON(MACH2PHYS_VIRT_START != RO_MPT_VIRT_START);
     BUILD_BUG_ON(MACH2PHYS_VIRT_END   != RO_MPT_VIRT_END);
 
+#ifdef CONFIG_NVDIMM_PMEM
+    acpi_nfit_boot_init();
+#endif
+
     init_frametable();
 
     if ( !acpi_boot_table_init_done )
