@@ -71,6 +71,7 @@
 #define ACPI_SIG_SBST           "SBST"	/* Smart Battery Specification Table */
 #define ACPI_SIG_SLIT           "SLIT"	/* System Locality Distance Information Table */
 #define ACPI_SIG_SRAT           "SRAT"	/* System Resource Affinity Table */
+#define ACPI_SIG_NFIT           "NFIT"	/* NVDIMM Firmware Interface Table */
 
 /*
  * All tables must be byte-packed to match the ACPI specification, since
@@ -901,6 +902,48 @@ struct acpi_msct_proximity {
 	u32 range_end;		/* End of domain range */
 	u32 processor_capacity;
 	u64 memory_capacity;	/* In bytes */
+};
+
+/*******************************************************************************
+ *
+ * NFIT - NVDIMM Interface Table (ACPI 6.0+)
+ *		  Version 1
+ *
+ ******************************************************************************/
+
+struct acpi_table_nfit {
+	struct acpi_table_header header;	/* Common ACPI table header */
+	u32 reserved;						/* Reserved, must be zero */
+};
+
+/* Subtable header for NFIT */
+
+struct acpi_nfit_header {
+	u16 type;
+	u16 length;
+};
+
+/* Values for subtable type in struct acpi_nfit_header */
+enum acpi_nfit_type {
+	ACPI_NFIT_TYPE_SYSTEM_ADDRESS = 0,
+	ACPI_NFIT_TYPE_MEMORY_MAP = 1,
+};
+
+/*
+ * NFIT Subtables
+ */
+
+/* 0: System Physical Address Range Structure */
+struct acpi_nfit_system_address {
+	struct acpi_nfit_header header;
+	u16 range_index;
+	u16 flags;
+	u32 reserved;		/* Reseved, must be zero */
+	u32 proximity_domain;
+	u8	range_guid[16];
+	u64 address;
+	u64 length;
+	u64 memory_mapping;
 };
 
 /*******************************************************************************

@@ -83,6 +83,9 @@
  * an application-supplied buffer).
  */
 
+#ifdef CONFIG_NVDIMM_PMEM
+#include <xen/acpi.h>
+#endif
 #include <xen/init.h>
 #include <xen/kernel.h>
 #include <xen/lib.h>
@@ -196,31 +199,123 @@ static int __init parse_mmio_relax(const char *s)
 }
 custom_param("mmio-relax", parse_mmio_relax);
 
-static void __init init_frametable_chunk(void *start, void *end)
+static void __init init_frametable_ram_chunk(unsigned long s, unsigned long e)
 {
-    unsigned long s = (unsigned long)start;
-    unsigned long e = (unsigned long)end;
-    unsigned long step, mfn;
+    unsigned long cur, step, mfn;
 
-    ASSERT(!(s & ((1 << L2_PAGETABLE_SHIFT) - 1)));
-    for ( ; s < e; s += step << PAGE_SHIFT )
+    for ( cur = s; cur < e; cur += step << PAGE_SHIFT )
     {
         step = 1UL << (cpu_has_page1gb &&
-                       !(s & ((1UL << L3_PAGETABLE_SHIFT) - 1)) ?
+                       !(cur & ((1UL << L3_PAGETABLE_SHIFT) - 1)) ?
                        L3_PAGETABLE_SHIFT - PAGE_SHIFT :
                        L2_PAGETABLE_SHIFT - PAGE_SHIFT);
         /*
          * The hardcoded 4 below is arbitrary - just pick whatever you think
          * is reasonable to waste as a trade-off for using a large page.
          */
-        while ( step && s + (step << PAGE_SHIFT) > e + (4 << PAGE_SHIFT) )
+        while ( step && cur + (step << PAGE_SHIFT) > e + (4 << PAGE_SHIFT) )
             step >>= PAGETABLE_ORDER;
         mfn = alloc_boot_pages(step, step);
-        map_pages_to_xen(s, mfn, step, PAGE_HYPERVISOR);
+        map_pages_to_xen(cur, mfn, step, PAGE_HYPERVISOR);
     }
 
-    memset(start, 0, end - start);
-    memset(end, -1, s - e);
+    memset((void *)s, 0, e - s);
+    memset((void *)e, -1, cur - e);
+}
+
+#ifdef CONFIG_NVDIMM_PMEM
+static void __init init_frametable_pmem_chunk(unsigned long s, unsigned long e)
+{
+    static unsigned long pmem_init_frametable_mfn;
+
+    ASSERT(!((s | e) & (PAGE_SIZE - 1)));
+
+    if ( !pmem_init_frametable_mfn )
+    {
+        pmem_init_frametable_mfn = alloc_boot_pages(1, 1);
+        if ( !pmem_init_frametable_mfn )
+            panic("Not enough memory for pmem initial frame table page");
+        memset(mfn_to_virt(pmem_init_frametable_mfn), -1, PAGE_SIZE);
+    }
+
+    while ( s < e )
+    {
+        /*
+         * The real frame table entries of a pmem region will be
+         * created when the pmem region is registered to hypervisor.
+         * Any write attempt to the initial entries of that pmem
+         * region implies potential hypervisor bugs. In order to make
+         * those bugs explicit, map those initial entries as read-only.
+         */
+        map_pages_to_xen(s, pmem_init_frametable_mfn, 1, PAGE_HYPERVISOR_RO);
+        s += PAGE_SIZE;
+    }
+}
+#endif /* CONFIG_NVDIMM_PMEM */
+
+static void __init init_frametable_chunk(void *start, void *end)
+{
+    unsigned long s = (unsigned long)start;
+    unsigned long e = (unsigned long)end;
+#ifdef CONFIG_NVDIMM_PMEM
+    unsigned long pmem_smfn, pmem_emfn;
+    unsigned long pmem_spage = s, pmem_epage = s;
+    unsigned long pmem_page_aligned;
+    bool found = false;
+#endif /* CONFIG_NVDIMM_PMEM */
+
+    ASSERT(!(s & ((1 << L2_PAGETABLE_SHIFT) - 1)));
+
+#ifndef CONFIG_NVDIMM_PMEM
+    init_frametable_ram_chunk(s, e);
+#else
+    while ( s < e )
+    {
+        /* No previous found pmem region overlaps with s ~ e. */
+        if ( s >= (pmem_epage & PAGE_MASK) )
+        {
+            found = acpi_nfit_boot_search_pmem(
+                mfn_x(page_to_mfn((struct page_info *)s)),
+                mfn_x(page_to_mfn((struct page_info *)e)),
+                &pmem_smfn, &pmem_emfn);
+            if ( found )
+            {
+                pmem_spage = (unsigned long)mfn_to_page(_mfn(pmem_smfn));
+                pmem_epage = (unsigned long)mfn_to_page(_mfn(pmem_emfn));
+            }
+        }
+
+        /* No pmem region found in s ~ e. */
+        if ( s >= (pmem_epage & PAGE_MASK) )
+        {
+            init_frametable_ram_chunk(s, e);
+            break;
+        }
+
+        if ( s < pmem_spage )
+        {
+            init_frametable_ram_chunk(s, pmem_spage);
+            pmem_page_aligned = (pmem_spage + PAGE_SIZE - 1) & PAGE_MASK;
+            if ( pmem_page_aligned > pmem_epage )
+                memset((void *)pmem_epage, -1, pmem_page_aligned - pmem_epage);
+            s = pmem_page_aligned;
+        }
+        else
+        {
+            pmem_page_aligned = pmem_epage & PAGE_MASK;
+            if ( pmem_page_aligned > s )
+                init_frametable_pmem_chunk(s, pmem_page_aligned);
+            if ( pmem_page_aligned < pmem_epage )
+            {
+                init_frametable_ram_chunk(pmem_page_aligned,
+                                          min(pmem_page_aligned + PAGE_SIZE, e));
+                memset((void *)pmem_page_aligned, -1,
+                       pmem_epage - pmem_page_aligned);
+            }
+            s = (pmem_epage + PAGE_SIZE - 1) & PAGE_MASK;
+        }
+    }
+#endif
 }
 
 void __init init_frametable(void)
