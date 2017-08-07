@@ -31,11 +31,166 @@ static const uint8_t nfit_spa_pmem_guid[] =
     0xac, 0x43, 0x0d, 0x33, 0x18, 0xb7, 0x8c, 0xdb,
 };
 
-struct acpi_nfit_desc {
-    struct acpi_table_nfit *acpi_table;
+struct nfit_spa_desc {
+    struct list_head link;
+    struct acpi_nfit_system_address *acpi_table;
+    struct list_head memdev_list;
 };
 
-static struct acpi_nfit_desc nfit_desc;
+struct nfit_memdev_desc {
+    struct list_head link;
+    struct acpi_nfit_memory_map *acpi_table;
+    struct list_head memdev_link;
+};
+
+struct acpi_nfit_desc {
+    struct acpi_table_nfit *acpi_table;
+    struct list_head spa_list;
+    struct list_head memdev_list;
+};
+
+static struct acpi_nfit_desc nfit_desc = {
+    .spa_list = LIST_HEAD_INIT(nfit_desc.spa_list),
+    .memdev_list = LIST_HEAD_INIT(nfit_desc.memdev_list),
+};
+
+static void __init acpi_nfit_del_subtables(struct acpi_nfit_desc *desc)
+{
+    struct nfit_spa_desc *spa, *spa_next;
+    struct nfit_memdev_desc *memdev, *memdev_next;
+
+    list_for_each_entry_safe(spa, spa_next, &desc->spa_list, link)
+    {
+        list_del(&spa->link);
+        xfree(spa);
+    }
+    list_for_each_entry_safe (memdev, memdev_next, &desc->memdev_list, link)
+    {
+        list_del(&memdev->link);
+        xfree(memdev);
+    }
+}
+
+static int __init acpi_nfit_add_subtables(struct acpi_nfit_desc *desc)
+{
+    struct acpi_table_nfit *nfit_table = desc->acpi_table;
+    uint32_t hdr_offset = sizeof(*nfit_table);
+    uint32_t nfit_length = nfit_table->header.length;
+    struct acpi_nfit_header *hdr;
+    struct nfit_spa_desc *spa_desc;
+    struct nfit_memdev_desc *memdev_desc;
+    int ret = 0;
+
+#define INIT_DESC(desc, acpi_hdr, acpi_type, desc_list) \
+    do {                                                \
+        (desc) = xzalloc(typeof(*(desc)));              \
+        if ( unlikely(!(desc)) ) {                      \
+            ret = -ENOMEM;                              \
+            goto nomem;                                 \
+        }                                               \
+        (desc)->acpi_table = (acpi_type *)(acpi_hdr);   \
+        INIT_LIST_HEAD(&(desc)->link);                  \
+        list_add_tail(&(desc)->link, (desc_list));      \
+    } while ( 0 )
+
+    while ( hdr_offset < nfit_length )
+    {
+        hdr = (void *)nfit_table + hdr_offset;
+        hdr_offset += hdr->length;
+
+        switch ( hdr->type )
+        {
+        case ACPI_NFIT_TYPE_SYSTEM_ADDRESS:
+            INIT_DESC(spa_desc, hdr, struct acpi_nfit_system_address,
+                      &desc->spa_list);
+            break;
+
+        case ACPI_NFIT_TYPE_MEMORY_MAP:
+            INIT_DESC(memdev_desc, hdr, struct acpi_nfit_memory_map,
+                      &desc->memdev_list);
+            break;
+
+        default:
+            continue;
+        }
+    }
+
+#undef INIT_DESC
+
+    return 0;
+
+ nomem:
+    acpi_nfit_del_subtables(desc);
+
+    return ret;
+}
+
+static void __init acpi_nfit_link_subtables(struct acpi_nfit_desc *desc)
+{
+    struct nfit_spa_desc *spa_desc;
+    struct nfit_memdev_desc *memdev_desc;
+    uint16_t spa_idx;
+
+    list_for_each_entry(spa_desc, &desc->spa_list, link)
+    {
+        INIT_LIST_HEAD(&spa_desc->memdev_list);
+
+        spa_idx = spa_desc->acpi_table->range_index;
+
+        list_for_each_entry(memdev_desc, &desc->memdev_list, link)
+        {
+            if ( memdev_desc->acpi_table->range_index == spa_idx )
+                list_add_tail(&memdev_desc->memdev_link,
+                              &spa_desc->memdev_list);
+        }
+    }
+}
+
+static void __init acpi_nfit_register_pmem(struct acpi_nfit_desc *desc)
+{
+    struct nfit_spa_desc *spa_desc;
+    struct nfit_memdev_desc *memdev_desc;
+    struct acpi_nfit_system_address *spa;
+    unsigned long smfn, emfn;
+    bool failed;
+
+    list_for_each_entry(spa_desc, &desc->spa_list, link)
+    {
+        spa = spa_desc->acpi_table;
+
+        /* Skip non-pmem entry. */
+        if ( memcmp(spa->range_guid, nfit_spa_pmem_guid, 16) )
+            continue;
+
+        smfn = paddr_to_pfn(spa->address);
+        emfn = paddr_to_pfn(spa->address + spa->length);
+        failed = false;
+
+        list_for_each_entry(memdev_desc, &spa_desc->memdev_list, memdev_link)
+        {
+            if ( memdev_desc->acpi_table->flags &
+                 (ACPI_NFIT_MEM_SAVE_FAILED |
+                  ACPI_NFIT_MEM_RESTORE_FAILED |
+                  ACPI_NFIT_MEM_FLUSH_FAILED |
+                  ACPI_NFIT_MEM_NOT_ARMED |
+                  ACPI_NFIT_MEM_MAP_FAILED) )
+            {
+                failed = true;
+                break;
+            }
+        }
+
+        if ( failed )
+        {
+            printk(XENLOG_INFO
+                   "NFIT: detected failures on PMEM MFNs 0x%lx - 0x%lx, skipped\n",
+                   smfn, emfn);
+            continue;
+        }
+
+        printk(XENLOG_INFO "NFIT: PMEM MFNs 0x%lx - 0x%lx\n", smfn, emfn);
+    }
+}
 
 void __init acpi_nfit_boot_init(void)
 {
@@ -51,6 +206,25 @@ void __init acpi_nfit_boot_init(void)
     map_pages_to_xen((unsigned long)nfit_desc.acpi_table, PFN_DOWN(nfit_addr),
                      PFN_UP(nfit_addr + nfit_len) - PFN_DOWN(nfit_addr),
                      PAGE_HYPERVISOR);
+}
+
+void __init acpi_nfit_init(void)
+{
+    if ( !nfit_desc.acpi_table )
+        return;
+
+    /* Collect all SPA and memory map sub-tables. */
+    if ( acpi_nfit_add_subtables(&nfit_desc) )
+    {
+        printk(XENLOG_ERR "NFIT: no memory for NFIT management\n");
+        return;
+    }
+
+    /* Link descriptors of SPA and memory map sub-tables. */
+    acpi_nfit_link_subtables(&nfit_desc);
+
+    /* Register valid pmem regions to Xen hypervisor. */
+    acpi_nfit_register_pmem(&nfit_desc);
 }
 
 /**
