@@ -185,6 +185,7 @@ void acpi_nfit_boot_init(void);
 bool acpi_nfit_boot_search_pmem(unsigned long smfn, unsigned long emfn,
                                 unsigned long *ret_smfn,
                                 unsigned long *ret_emfn);
+void acpi_nfit_init(void);
 #endif /* CONFIG_NVDIMM_PMEM */
 
 #endif /*_LINUX_ACPI_H*/
