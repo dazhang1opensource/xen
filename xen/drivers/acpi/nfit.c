@@ -20,6 +20,7 @@
 #include <xen/init.h>
 #include <xen/mm.h>
 #include <xen/pfn.h>
+#include <xen/pmem.h>
 
 /*
  * GUID of a byte addressable persistent memory region
@@ -148,6 +149,7 @@ static void __init acpi_nfit_register_pmem(struct acpi_nfit_desc *desc)
     struct nfit_memdev_desc *memdev_desc;
     struct acpi_nfit_system_address *spa;
     unsigned long smfn, emfn;
+    int rc;
 
     list_for_each_entry(memdev_desc, &desc->memdev_list, link)
     {
@@ -165,7 +167,15 @@ static void __init acpi_nfit_register_pmem(struct acpi_nfit_desc *desc)
             continue;
         smfn = paddr_to_pfn(spa->address);
         emfn = paddr_to_pfn(spa->address + spa->length);
-        printk(XENLOG_INFO "NFIT: PMEM MFNs 0x%lx - 0x%lx\n", smfn, emfn);
+        rc = pmem_register(smfn, emfn, spa->proximity_domain);
+        if ( !rc )
+            printk(XENLOG_INFO
+                   "NFIT: PMEM MFNs 0x%lx - 0x%lx on PXM %u registered\n",
+                   smfn, emfn, spa->proximity_domain);
+        else
+            printk(XENLOG_ERR
+                   "NFIT: failed to register PMEM MFNs 0x%lx - 0x%lx on PXM %u, err %d\n",
+                   smfn, emfn, spa->proximity_domain, rc);
     }
 }
 
