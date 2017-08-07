@@ -946,6 +946,32 @@ struct acpi_nfit_system_address {
 	u64 memory_mapping;
 };
 
+/* 1: Memory Device to System Address Range Map Structure */
+struct acpi_nfit_memory_map {
+	struct acpi_nfit_header header;
+	u32 device_handle;
+	u16 physical_id;
+	u16 region_id;
+	u16 range_index;
+	u16 region_index;
+	u64 region_size;
+	u64 region_offset;
+	u64 address;
+	u16 interleave_index;
+	u16 interleave_ways;
+	u16 flags;
+	u16 reserved;		/* Reserved, must be zero */
+};
+
+/* Flags in struct acpi_nfit_memory_map */
+#define ACPI_NFIT_MEM_SAVE_FAILED		(1)	/* 00: Last SAVE to Memory Device failed */
+#define ACPI_NFIT_MEM_RESTORE_FAILED	(1<<1)	/* 01: Last RESTORE from Memory Device failed */
+#define ACPI_NFIT_MEM_FLUSH_FAILED		(1<<2)	/* 02: Platform flush failed */
+#define ACPI_NFIT_MEM_NOT_ARMED			(1<<3)	/* 03: Memory Device is not armed */
+#define ACPI_NFIT_MEM_HEALTH_OBSERVED	(1<<4)	/* 04: Memory Device observed SMART/health events */
+#define ACPI_NFIT_MEM_HEALTH_ENABLED	(1<<5)	/* 05: SMART/health events enabled */
+#define ACPI_NFIT_MEM_MAP_FAILED		(1<<6)	/* 06: Mapping to SPA failed */
+
 /*******************************************************************************
  *
  * SBST - Smart Battery Specification Table
