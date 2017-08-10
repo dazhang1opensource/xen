@@ -27,12 +27,14 @@
 
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <xenctrl.h>
 
 static xc_interface *xch;
 
 static int handle_help(int argc, char *argv[]);
+static int handle_list(int argc, char *argv[]);
 static int handle_list_cmds(int argc, char *argv[]);
 
 static const struct xen_ndctl_cmd
@@ -50,6 +52,15 @@ static const struct xen_ndctl_cmd
         .help    = "Show this message or the help message of 'command'.\n"
                    "Use command 'list-cmds' to list all supported commands.\n",
         .handler = handle_help,
+    },
+
+    {
+        .name    = "list",
+        .syntax  = "[--all | --raw ]",
+        .help    = "--all: the default option, list all PMEM regions of following types.\n"
+                   "--raw: list all PMEM regions detected by Xen hypervisor.\n",
+        .handler = handle_list,
+        .need_xc = true,
     },
 
     {
@@ -107,6 +118,70 @@ static int handle_help(int argc, char *argv[])
         return handle_unrecognized_argument(argv[0], argv[2]);
 
     return 0;
+}
+
+static int handle_list_raw(void)
+{
+    int rc;
+    unsigned int nr = 0, i;
+    xen_sysctl_nvdimm_pmem_raw_region_t *raw_list;
+
+    rc = xc_nvdimm_pmem_get_regions_nr(xch, PMEM_REGION_TYPE_RAW, &nr);
+    if ( rc )
+    {
+        fprintf(stderr, "Cannot get the number of PMEM regions: %s.\n",
+                strerror(-rc));
+        return rc;
+    }
+
+    raw_list = malloc(nr * sizeof(*raw_list));
+    if ( !raw_list )
+        return -ENOMEM;
+
+    rc = xc_nvdimm_pmem_get_regions(xch, PMEM_REGION_TYPE_RAW, raw_list, &nr);
+    if ( rc )
+        goto out;
+
+    printf("Raw PMEM regions:\n");
+    for ( i = 0; i < nr; i++ )
+        printf(" %u: MFN 0x%lx - 0x%lx, PXM %u\n",
+               i, raw_list[i].smfn, raw_list[i].emfn, raw_list[i].pxm);
+
+ out:
+    free(raw_list);
+
+    return rc;
+}
+
+static const struct list_handlers {
+    const char *option;
+    int (*handler)(void);
+} list_hndrs[] =
+{
+    { "--raw", handle_list_raw },
+};
+
+static const unsigned int nr_list_hndrs =
+    sizeof(list_hndrs) / sizeof(list_hndrs[0]);
+
+static int handle_list(int argc, char *argv[])
+{
+    bool list_all = argc <= 1 || !strcmp(argv[1], "--all");
+    unsigned int i;
+    bool handled = false;
+    int rc = 0;
+
+    for ( i = 0; i < nr_list_hndrs && !rc; i++)
+        if ( list_all || !strcmp(argv[1], list_hndrs[i].option) )
+        {
+            rc = list_hndrs[i].handler();
+            handled = true;
+        }
+
+    if ( !handled )
+        return handle_unrecognized_argument(argv[0], argv[1]);
+
+    return rc;
 }
 
 static int handle_list_cmds(int argc, char *argv[])
