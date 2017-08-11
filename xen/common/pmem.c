@@ -125,6 +125,24 @@ int pmem_register(unsigned long smfn, unsigned long emfn, unsigned int pxm)
     return rc;
 }
 
+/**
+ * Top-level hypercall handler of XEN_SYSCTL_nvdimm_pmem_*.
+ *
+ * Parameters:
+ *  nvdimm: the hypercall parameters
+ *
+ * Return:
+ *  On success, return 0. Otherwise, return a non-zero error code.
+ */
+int pmem_do_sysctl(struct xen_sysctl_nvdimm_op *nvdimm)
+{
+    int rc = -ENOSYS;
+
+    nvdimm->err = -rc;
+
+    return rc;
+}
+
 #ifdef CONFIG_X86
 
 int __init pmem_dom0_setup_permission(struct domain *d)
