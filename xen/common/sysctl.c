@@ -28,6 +28,7 @@
 #include <xen/pmstat.h>
 #include <xen/livepatch.h>
 #include <xen/coverage.h>
+#include <xen/pmem.h>
 
 long do_sysctl(XEN_GUEST_HANDLE_PARAM(xen_sysctl_t) u_sysctl)
 {
@@ -501,6 +502,14 @@ long do_sysctl(XEN_GUEST_HANDLE_PARAM(xen_sysctl_t) u_sysctl)
 
         break;
     }
+
+#ifdef CONFIG_NVDIMM_PMEM
+    case XEN_SYSCTL_nvdimm_op:
+        ret = pmem_do_sysctl(&op->u.nvdimm);
+        if ( ret != -ENOSYS )
+            copyback = 1;
+        break;
+#endif
 
     default:
         ret = arch_do_sysctl(op, u_sysctl);

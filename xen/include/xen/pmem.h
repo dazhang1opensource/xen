@@ -20,9 +20,11 @@
 #define __XEN_PMEM_H__
 #ifdef CONFIG_NVDIMM_PMEM
 
+#include <public/sysctl.h>
 #include <xen/types.h>
 
 int pmem_register(unsigned long smfn, unsigned long emfn, unsigned int pxm);
+int pmem_do_sysctl(struct xen_sysctl_nvdimm_op *nvdimm);
 
 #ifdef CONFIG_X86
 
