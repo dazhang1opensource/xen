@@ -103,6 +103,8 @@ class xen2
     gcov_op
 # XEN_SYSCTL_set_parameter
     set_parameter
+# XEN_SYSCTL_nvdimm_op
+    nvdimm_op
 }
 
 # Classes domain and domain2 consist of operations that a domain performs on

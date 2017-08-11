@@ -832,6 +832,10 @@ static int flask_sysctl(int cmd)
         return avc_current_has_perm(SECINITSID_XEN, SECCLASS_XEN2,
                                     XEN2__SET_PARAMETER, NULL);
 
+    case XEN_SYSCTL_nvdimm_op:
+        return avc_current_has_perm(SECINITSID_XEN, SECCLASS_XEN2,
+                                    XEN2__NVDIMM_OP, NULL);
+
     default:
         return avc_unknown_permission("sysctl", cmd);
     }

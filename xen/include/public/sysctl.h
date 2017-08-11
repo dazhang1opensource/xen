@@ -36,7 +36,7 @@
 #include "physdev.h"
 #include "tmem.h"
 
-#define XEN_SYSCTL_INTERFACE_VERSION 0x0000000F
+#define XEN_SYSCTL_INTERFACE_VERSION 0x00000010
 
 /*
  * Read console content from Xen buffer ring.
@@ -1114,6 +1114,21 @@ struct xen_sysctl_set_parameter {
 typedef struct xen_sysctl_set_parameter xen_sysctl_set_parameter_t;
 DEFINE_XEN_GUEST_HANDLE(xen_sysctl_set_parameter_t);
 
+/*
+ * Interface for NVDIMM management.
+ */
+
+struct xen_sysctl_nvdimm_op {
+    uint32_t cmd; /* IN: XEN_SYSCTL_nvdimm_*; none is implemented yet. */
+    uint32_t pad; /* IN: Always zero. */
+    union {
+        /* Parameters of XEN_SYSCTL_nvdimm_* will be added here. */
+    } u;
+    uint32_t err; /* OUT: error code */
+};
+typedef struct xen_sysctl_nvdimm_op xen_sysctl_nvdimm_op_t;
+DEFINE_XEN_GUEST_HANDLE(xen_sysctl_nvdimm_op_t);
+
 struct xen_sysctl {
     uint32_t cmd;
 #define XEN_SYSCTL_readconsole                    1
@@ -1143,6 +1158,7 @@ struct xen_sysctl {
 #define XEN_SYSCTL_get_cpu_featureset            26
 #define XEN_SYSCTL_livepatch_op                  27
 #define XEN_SYSCTL_set_parameter                 28
+#define XEN_SYSCTL_nvdimm_op                     29
     uint32_t interface_version; /* XEN_SYSCTL_INTERFACE_VERSION */
     union {
         struct xen_sysctl_readconsole       readconsole;
@@ -1172,6 +1188,7 @@ struct xen_sysctl {
         struct xen_sysctl_cpu_featureset    cpu_featureset;
         struct xen_sysctl_livepatch_op      livepatch;
         struct xen_sysctl_set_parameter     set_parameter;
+        struct xen_sysctl_nvdimm_op         nvdimm;
         uint8_t                             pad[128];
     } u;
 };
