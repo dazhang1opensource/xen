@@ -36,6 +36,7 @@ static xc_interface *xch;
 static int handle_help(int argc, char *argv[]);
 static int handle_list(int argc, char *argv[]);
 static int handle_list_cmds(int argc, char *argv[]);
+static int handle_setup_mgmt(int argc, char *argv[]);
 
 static const struct xen_ndctl_cmd
 {
@@ -68,6 +69,14 @@ static const struct xen_ndctl_cmd
         .syntax  = "",
         .help    = "List all supported commands.\n",
         .handler = handle_list_cmds,
+    },
+
+    {
+        .name    = "setup-mgmt",
+        .syntax  = "<smfn> <emfn>",
+        .help    = "Setup a PMEM region from MFN 'smfn' to 'emfn' for management usage.\n\n",
+        .handler = handle_setup_mgmt,
+        .need_xc = true,
     },
 };
 
@@ -195,6 +204,42 @@ static int handle_list_cmds(int argc, char *argv[])
         fprintf(stderr, "%s\n", cmds[i].name);
 
     return 0;
+}
+
+static bool string_to_mfn(const char *str, unsigned long *ret)
+{
+    unsigned long l;
+
+    errno = 0;
+    l = strtoul(str, NULL, 0);
+
+    if ( !errno )
+        *ret = l;
+    else
+        fprintf(stderr, "Invalid MFN %s: %s\n", str, strerror(errno));
+
+    return !errno;
+}
+
+static int handle_setup_mgmt(int argc, char **argv)
+{
+    unsigned long smfn, emfn;
+
+    if ( argc < 3 )
+    {
+        fprintf(stderr, "Too few arguments.\n\n");
+        show_help(argv[0]);
+        return -EINVAL;
+    }
+
+    if ( !string_to_mfn(argv[1], &smfn) ||
+         !string_to_mfn(argv[2], &emfn) )
+        return -EINVAL;
+
+    if ( argc > 3 )
+        return handle_unrecognized_argument(argv[0], argv[3]);
+
+    return xc_nvdimm_pmem_setup_mgmt(xch, smfn, emfn);
 }
 
 int main(int argc, char *argv[])
