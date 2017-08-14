@@ -22,6 +22,8 @@
 #include <xen/paging.h>
 #include <xen/pmem.h>
 
+#include <asm/guest_access.h>
+
 /*
  * All PMEM regions presenting in NFIT SPA range structures are linked
  * in this list.
@@ -114,6 +116,67 @@ static int pmem_get_regions_nr(xen_sysctl_nvdimm_pmem_regions_nr_t *regions_nr)
     return rc;
 }
 
+static int pmem_get_raw_regions(
+    XEN_GUEST_HANDLE_64(xen_sysctl_nvdimm_pmem_raw_region_t) regions,
+    unsigned int *num_regions)
+{
+    struct list_head *cur;
+    unsigned int nr = 0, max = *num_regions;
+    xen_sysctl_nvdimm_pmem_raw_region_t region;
+    int rc = 0;
+
+    if ( !guest_handle_okay(regions, max * sizeof(region)) )
+        return -EINVAL;
+
+    list_for_each(cur, &pmem_raw_regions)
+    {
+        struct pmem *pmem = list_entry(cur, struct pmem, link);
+
+        if ( nr >= max )
+            break;
+
+        region.smfn = pmem->smfn;
+        region.emfn = pmem->emfn;
+        region.pxm = pmem->u.raw.pxm;
+
+        if ( copy_to_guest_offset(regions, nr, &region, 1) )
+        {
+            rc = -EFAULT;
+            break;
+        }
+
+        nr++;
+    }
+
+    *num_regions = nr;
+
+    return rc;
+}
+
+static int pmem_get_regions(xen_sysctl_nvdimm_pmem_regions_t *regions)
+{
+    unsigned int type = regions->type, max = regions->num_regions;
+    int rc = 0;
+
+    if ( !max )
+        return 0;
+
+    switch ( type )
+    {
+    case PMEM_REGION_TYPE_RAW:
+        rc = pmem_get_raw_regions(regions->u_buffer.raw_regions, &max);
+        break;
+
+    default:
+        rc = -EINVAL;
+    }
+
+    if ( !rc )
+        regions->num_regions = max;
+
+    return rc;
+}
+
 /**
  * Register a pmem region to Xen.
  *
@@ -157,6 +220,10 @@ int pmem_do_sysctl(struct xen_sysctl_nvdimm_op *nvdimm)
     {
     case XEN_SYSCTL_nvdimm_pmem_get_regions_nr:
         rc = pmem_get_regions_nr(&nvdimm->u.pmem_regions_nr);
+        break;
+
+    case XEN_SYSCTL_nvdimm_pmem_get_regions:
+        rc = pmem_get_regions(&nvdimm->u.pmem_regions);
         break;
 
     default:

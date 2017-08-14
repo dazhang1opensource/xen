@@ -2622,6 +2622,24 @@ int xc_domain_cacheflush(xc_interface *xch, uint32_t domid,
 int xc_nvdimm_pmem_get_regions_nr(xc_interface *xch,
                                   uint8_t type, uint32_t *nr);
 
+/*
+ * Get an array of information of PMEM regions of the specified type.
+ *
+ * Parameters:
+ *  xch:    xc interface handle
+ *  type:   the type of PMEM regions, must be one of PMEM_REGION_TYPE_*
+ *  buffer: the buffer where the information of PMEM regions is returned,
+ *          the caller should allocate enough memory for it.
+ *  nr :    IN: the maximum number of PMEM regions that can be returned
+ *              in @buffer
+ *          OUT: the actual number of returned PMEM regions in @buffer
+ *
+ * Return:
+ *  On success, return 0. Otherwise, return a non-zero error code.
+ */
+int xc_nvdimm_pmem_get_regions(xc_interface *xch, uint8_t type,
+                               void *buffer, uint32_t *nr);
+
 /* Compat shims */
 #include "xenctrl_compat.h"
 
