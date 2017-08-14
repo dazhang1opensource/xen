@@ -888,6 +888,30 @@ int xc_livepatch_replace(xc_interface *xch, char *name, uint32_t timeout)
     return _xc_livepatch_action(xch, name, LIVEPATCH_ACTION_REPLACE, timeout);
 }
 
+int xc_nvdimm_pmem_get_regions_nr(xc_interface *xch, uint8_t type, uint32_t *nr)
+{
+    DECLARE_SYSCTL;
+    xen_sysctl_nvdimm_op_t *nvdimm = &sysctl.u.nvdimm;
+    int rc;
+
+    if ( !nr || type != PMEM_REGION_TYPE_RAW )
+        return -EINVAL;
+
+    sysctl.cmd = XEN_SYSCTL_nvdimm_op;
+    nvdimm->cmd = XEN_SYSCTL_nvdimm_pmem_get_regions_nr;
+    nvdimm->pad = 0;
+    nvdimm->u.pmem_regions_nr.type = type;
+    nvdimm->err = 0;
+
+    rc = do_sysctl(xch, &sysctl);
+    if ( !rc )
+        *nr = nvdimm->u.pmem_regions_nr.num_regions;
+    else if ( nvdimm->err )
+        rc = nvdimm->err;
+
+    return rc;
+}
+
 /*
  * Local variables:
  * mode: C
