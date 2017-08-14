@@ -912,6 +912,69 @@ int xc_nvdimm_pmem_get_regions_nr(xc_interface *xch, uint8_t type, uint32_t *nr)
     return rc;
 }
 
+int xc_nvdimm_pmem_get_regions(xc_interface *xch, uint8_t type,
+                               void *buffer, uint32_t *nr)
+{
+    DECLARE_SYSCTL;
+    DECLARE_HYPERCALL_BOUNCE(buffer, 0, XC_HYPERCALL_BUFFER_BOUNCE_OUT);
+
+    xen_sysctl_nvdimm_op_t *nvdimm = &sysctl.u.nvdimm;
+    xen_sysctl_nvdimm_pmem_regions_t *regions = &nvdimm->u.pmem_regions;
+    unsigned int max;
+    unsigned long size;
+    int rc;
+
+    if ( !buffer || !nr )
+        return -EINVAL;
+
+    max = *nr;
+    if ( !max )
+        return 0;
+
+    switch ( type )
+    {
+    case PMEM_REGION_TYPE_RAW:
+        size = sizeof(xen_sysctl_nvdimm_pmem_raw_region_t) * max;
+        break;
+
+    default:
+        return -EINVAL;
+    }
+
+    HYPERCALL_BOUNCE_SET_SIZE(buffer, size);
+    if ( xc_hypercall_bounce_pre(xch, buffer) )
+        return -EFAULT;
+
+    sysctl.cmd = XEN_SYSCTL_nvdimm_op;
+    nvdimm->cmd = XEN_SYSCTL_nvdimm_pmem_get_regions;
+    nvdimm->pad = 0;
+    nvdimm->err = 0;
+    regions->type = type;
+    regions->num_regions = max;
+
+    switch ( type )
+    {
+    case PMEM_REGION_TYPE_RAW:
+        set_xen_guest_handle(regions->u_buffer.raw_regions, buffer);
+        break;
+
+    default:
+        rc = -EINVAL;
+        goto out;
+    }
+
+    rc = do_sysctl(xch, &sysctl);
+    if ( !rc )
+        *nr = regions->num_regions;
+    else if ( nvdimm->err )
+        rc = -nvdimm->err;
+
+out:
+    xc_hypercall_bounce_post(xch, buffer);
+
+    return rc;
+}
+
 /*
  * Local variables:
  * mode: C
