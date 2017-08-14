@@ -1062,6 +1062,15 @@ struct xen_sysctl_nvdimm_pmem_raw_region {
 typedef struct xen_sysctl_nvdimm_pmem_raw_region xen_sysctl_nvdimm_pmem_raw_region_t;
 DEFINE_XEN_GUEST_HANDLE(xen_sysctl_nvdimm_pmem_raw_region_t);
 
+/* PMEM_REGION_TYPE_MGMT */
+struct xen_sysctl_nvdimm_pmem_mgmt_region {
+    uint64_t smfn;
+    uint64_t emfn;
+    uint64_t used_mfns;
+};
+typedef struct xen_sysctl_nvdimm_pmem_mgmt_region xen_sysctl_nvdimm_pmem_mgmt_region_t;
+DEFINE_XEN_GUEST_HANDLE(xen_sysctl_nvdimm_pmem_mgmt_region_t);
+
 /* XEN_SYSCTL_nvdimm_pmem_get_regions_nr */
 struct xen_sysctl_nvdimm_pmem_regions_nr {
     uint8_t type;         /* IN: one of PMEM_REGION_TYPE_* */
@@ -1080,6 +1089,8 @@ struct xen_sysctl_nvdimm_pmem_regions {
     union {
         /* if type == PMEM_REGION_TYPE_RAW */
         XEN_GUEST_HANDLE_64(xen_sysctl_nvdimm_pmem_raw_region_t) raw_regions;
+        /* if type == PMEM_REGION_TYPE_MGMT */
+        XEN_GUEST_HANDLE_64(xen_sysctl_nvdimm_pmem_mgmt_region_t) mgmt_regions;
     } u_buffer;           /* IN: the guest handler where the entries of PMEM
                                  regions of the type @type are returned */
 };

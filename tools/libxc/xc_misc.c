@@ -938,6 +938,10 @@ int xc_nvdimm_pmem_get_regions(xc_interface *xch, uint8_t type,
         size = sizeof(xen_sysctl_nvdimm_pmem_raw_region_t) * max;
         break;
 
+    case PMEM_REGION_TYPE_MGMT:
+        size = sizeof(xen_sysctl_nvdimm_pmem_mgmt_region_t) * max;
+        break;
+
     default:
         return -EINVAL;
     }
@@ -956,6 +960,10 @@ int xc_nvdimm_pmem_get_regions(xc_interface *xch, uint8_t type,
     {
     case PMEM_REGION_TYPE_RAW:
         set_xen_guest_handle(regions->u_buffer.raw_regions, buffer);
+        break;
+
+    case PMEM_REGION_TYPE_MGMT:
+        set_xen_guest_handle(regions->u_buffer.mgmt_regions, buffer);
         break;
 
     default:
