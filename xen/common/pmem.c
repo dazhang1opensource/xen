@@ -97,6 +97,23 @@ static int pmem_list_add(struct list_head *list,
     return 0;
 }
 
+static int pmem_get_regions_nr(xen_sysctl_nvdimm_pmem_regions_nr_t *regions_nr)
+{
+    int rc = 0;
+
+    switch ( regions_nr->type )
+    {
+    case PMEM_REGION_TYPE_RAW:
+        regions_nr->num_regions = nr_raw_regions;
+        break;
+
+    default:
+        rc = -EINVAL;
+    }
+
+    return rc;
+}
+
 /**
  * Register a pmem region to Xen.
  *
@@ -136,7 +153,17 @@ int pmem_register(unsigned long smfn, unsigned long emfn, unsigned int pxm)
  */
 int pmem_do_sysctl(struct xen_sysctl_nvdimm_op *nvdimm)
 {
-    int rc = -ENOSYS;
+    int rc;
+
+    switch ( nvdimm->cmd )
+    {
+    case XEN_SYSCTL_nvdimm_pmem_get_regions_nr:
+        rc = pmem_get_regions_nr(&nvdimm->u.pmem_regions_nr);
+        break;
+
+    default:
+        rc = -ENOSYS;
+    }
 
     nvdimm->err = -rc;
 
