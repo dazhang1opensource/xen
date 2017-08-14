@@ -57,9 +57,10 @@ static const struct xen_ndctl_cmd
 
     {
         .name    = "list",
-        .syntax  = "[--all | --raw ]",
+        .syntax  = "[--all | --raw | --mgmt]",
         .help    = "--all: the default option, list all PMEM regions of following types.\n"
-                   "--raw: list all PMEM regions detected by Xen hypervisor.\n",
+                   "--raw: list all PMEM regions detected by Xen hypervisor.\n"
+                   "--mgmt: list all PMEM regions for management usage.\n",
         .handler = handle_list,
         .need_xc = true,
     },
@@ -162,12 +163,46 @@ static int handle_list_raw(void)
     return rc;
 }
 
+static int handle_list_mgmt(void)
+{
+    int rc;
+    unsigned int nr = 0, i;
+    xen_sysctl_nvdimm_pmem_mgmt_region_t *mgmt_list;
+
+    rc = xc_nvdimm_pmem_get_regions_nr(xch, PMEM_REGION_TYPE_MGMT, &nr);
+    if ( rc )
+    {
+        fprintf(stderr, "Cannot get the number of PMEM regions: %s.\n",
+                strerror(-rc));
+        return rc;
+    }
+
+    mgmt_list = malloc(nr * sizeof(*mgmt_list));
+    if ( !mgmt_list )
+        return -ENOMEM;
+
+    rc = xc_nvdimm_pmem_get_regions(xch, PMEM_REGION_TYPE_MGMT, mgmt_list, &nr);
+    if ( rc )
+        goto out;
+
+    printf("Management PMEM regions:\n");
+    for ( i = 0; i < nr; i++ )
+        printf(" %u: MFN 0x%lx - 0x%lx, used 0x%lx\n",
+               i, mgmt_list[i].smfn, mgmt_list[i].emfn, mgmt_list[i].used_mfns);
+
+ out:
+    free(mgmt_list);
+
+    return rc;
+}
+
 static const struct list_handlers {
     const char *option;
     int (*handler)(void);
 } list_hndrs[] =
 {
     { "--raw", handle_list_raw },
+    { "--mgmt", handle_list_mgmt },
 };
 
 static const unsigned int nr_list_hndrs =
