@@ -2621,6 +2621,21 @@ int xc_livepatch_replace(xc_interface *xch, char *name, uint32_t timeout);
 int xc_domain_cacheflush(xc_interface *xch, uint32_t domid,
                          xen_pfn_t start_pfn, xen_pfn_t nr_pfns);
 
+/*
+ * Get the number of PMEM regions of the specified type.
+ *
+ * Parameters:
+ *  xch:  xc interface handle
+ *  type: the type of PMEM regions, must be one of PMEM_REGION_TYPE_*
+ *  nr:   the number of PMEM regions is returned via this parameter
+ *
+ * Return:
+ *  On success, return 0 and the number of PMEM regions is returned via @nr.
+ *  Otherwise, return a non-zero error code.
+ */
+int xc_nvdimm_pmem_get_regions_nr(xc_interface *xch,
+                                  uint8_t type, uint32_t *nr);
+
 /* Compat shims */
 #include "xenctrl_compat.h"
 
