@@ -1066,6 +1066,15 @@ struct xen_sysctl_set_parameter {
 /* Types of PMEM regions */
 #define PMEM_REGION_TYPE_RAW        0 /* PMEM regions detected by Xen */
 
+/* PMEM_REGION_TYPE_RAW */
+struct xen_sysctl_nvdimm_pmem_raw_region {
+    uint64_t smfn;
+    uint64_t emfn;
+    uint32_t pxm;
+};
+typedef struct xen_sysctl_nvdimm_pmem_raw_region xen_sysctl_nvdimm_pmem_raw_region_t;
+DEFINE_XEN_GUEST_HANDLE(xen_sysctl_nvdimm_pmem_raw_region_t);
+
 /* XEN_SYSCTL_nvdimm_pmem_get_regions_nr */
 struct xen_sysctl_nvdimm_pmem_regions_nr {
     uint8_t type;         /* IN: one of PMEM_REGION_TYPE_* */
@@ -1074,12 +1083,30 @@ struct xen_sysctl_nvdimm_pmem_regions_nr {
 typedef struct xen_sysctl_nvdimm_pmem_regions_nr xen_sysctl_nvdimm_pmem_regions_nr_t;
 DEFINE_XEN_GUEST_HANDLE(xen_sysctl_nvdimm_pmem_regions_nr_t);
 
+/* XEN_SYSCTL_nvdimm_pmem_get_regions */
+struct xen_sysctl_nvdimm_pmem_regions {
+    uint8_t type;         /* IN: one of PMEM_REGION_TYPE_* */
+    uint32_t num_regions; /* IN: the maximum number of entries that can be
+                                 returned via the guest handler in @u_buffer
+                             OUT: the actual number of entries returned via
+                                  the guest handler in @u_buffer */
+    union {
+        /* if type == PMEM_REGION_TYPE_RAW */
+        XEN_GUEST_HANDLE_64(xen_sysctl_nvdimm_pmem_raw_region_t) raw_regions;
+    } u_buffer;           /* IN: the guest handler where the entries of PMEM
+                                 regions of the type @type are returned */
+};
+typedef struct xen_sysctl_nvdimm_pmem_regions xen_sysctl_nvdimm_pmem_regions_t;
+DEFINE_XEN_GUEST_HANDLE(xen_sysctl_nvdimm_pmem_regions_t);
+
 struct xen_sysctl_nvdimm_op {
     uint32_t cmd; /* IN: XEN_SYSCTL_nvdimm_*; none is implemented yet. */
 #define XEN_SYSCTL_nvdimm_pmem_get_regions_nr     0
+#define XEN_SYSCTL_nvdimm_pmem_get_regions        1
     uint32_t err; /* OUT: error code */
     union {
         xen_sysctl_nvdimm_pmem_regions_nr_t pmem_regions_nr;
+        xen_sysctl_nvdimm_pmem_regions_t pmem_regions;
     } u;
 };
 
