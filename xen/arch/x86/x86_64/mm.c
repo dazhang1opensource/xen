@@ -1295,12 +1295,8 @@ static int mem_hotadd_check(unsigned long spfn, unsigned long epfn)
         return 0;
 
     /* Make sure the new range is not present now */
-    sidx = ((pfn_to_pdx(spfn) + PDX_GROUP_COUNT - 1)  & ~(PDX_GROUP_COUNT - 1))
-            / PDX_GROUP_COUNT;
+    sidx = (pfn_to_pdx(spfn) & ~(PDX_GROUP_COUNT - 1)) / PDX_GROUP_COUNT;
     eidx = (pfn_to_pdx(epfn - 1) & ~(PDX_GROUP_COUNT - 1)) / PDX_GROUP_COUNT;
-    if (sidx >= eidx)
-        return 0;
-
     s = find_next_zero_bit(pdx_group_valid, eidx, sidx);
     if ( s > eidx )
         return 0;
