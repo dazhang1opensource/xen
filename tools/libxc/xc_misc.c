@@ -896,7 +896,8 @@ int xc_nvdimm_pmem_get_regions_nr(xc_interface *xch, uint8_t type, uint32_t *nr)
 
     if ( !nr ||
          (type != PMEM_REGION_TYPE_RAW &&
-          type != PMEM_REGION_TYPE_MGMT) )
+          type != PMEM_REGION_TYPE_MGMT &&
+          type != PMEM_REGION_TYPE_DATA) )
         return -EINVAL;
 
     sysctl.cmd = XEN_SYSCTL_nvdimm_op;

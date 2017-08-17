@@ -162,6 +162,10 @@ static int pmem_get_regions_nr(xen_sysctl_nvdimm_pmem_regions_nr_t *regions_nr)
         regions_nr->num_regions = nr_mgmt_regions;
         break;
 
+    case PMEM_REGION_TYPE_DATA:
+        regions_nr->num_regions = nr_data_regions;
+        break;
+
     default:
         rc = -EINVAL;
     }
