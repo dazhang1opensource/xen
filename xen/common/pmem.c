@@ -243,6 +243,48 @@ static int pmem_get_mgmt_regions(
     return rc;
 }
 
+static int pmem_get_data_regions(
+    XEN_GUEST_HANDLE_64(xen_sysctl_nvdimm_pmem_data_region_t) regions,
+    unsigned int *num_regions)
+{
+    struct list_head *cur;
+    unsigned int nr = 0, max = *num_regions;
+    xen_sysctl_nvdimm_pmem_data_region_t region;
+    int rc = 0;
+
+    if ( !guest_handle_okay(regions, max * sizeof(region)) )
+        return -EINVAL;
+
+    spin_lock(&pmem_data_lock);
+
+    list_for_each(cur, &pmem_data_regions)
+    {
+        struct pmem *pmem = list_entry(cur, struct pmem, link);
+
+        if ( nr >= max )
+            break;
+
+        region.smfn = pmem->smfn;
+        region.emfn = pmem->emfn;
+        region.mgmt_smfn = pmem->u.data.mgmt_smfn;
+        region.mgmt_emfn = pmem->u.data.mgmt_emfn;
+
+        if ( copy_to_guest_offset(regions, nr, &region, 1) )
+        {
+            rc = -EFAULT;
+            break;
+        }
+
+        nr++;
+    }
+
+    spin_unlock(&pmem_data_lock);
+
+    *num_regions = nr;
+
+    return rc;
+}
+
 static int pmem_get_regions(xen_sysctl_nvdimm_pmem_regions_t *regions)
 {
     unsigned int type = regions->type, max = regions->num_regions;
@@ -259,6 +301,10 @@ static int pmem_get_regions(xen_sysctl_nvdimm_pmem_regions_t *regions)
 
     case PMEM_REGION_TYPE_MGMT:
         rc = pmem_get_mgmt_regions(regions->u_buffer.mgmt_regions, &max);
+        break;
+
+    case PMEM_REGION_TYPE_DATA:
+        rc = pmem_get_data_regions(regions->u_buffer.data_regions, &max);
         break;
 
     default:
