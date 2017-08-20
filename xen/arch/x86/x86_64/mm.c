@@ -710,15 +710,12 @@ void free_compat_arg_xlat(struct vcpu *v)
                               PFN_UP(COMPAT_ARG_XLAT_SIZE));
 }
 
-static void cleanup_frame_table(struct mem_hotadd_info *info)
+static void cleanup_frame_table(unsigned long spfn, unsigned long epfn)
 {
+    struct mem_hotadd_info info = { .spfn = spfn, .epfn = epfn, .cur = spfn };
     unsigned long sva, eva;
     l3_pgentry_t l3e;
     l2_pgentry_t l2e;
-    unsigned long spfn, epfn;
-
-    spfn = info->spfn;
-    epfn = info->epfn;
 
     sva = (unsigned long)mfn_to_page(spfn);
     eva = (unsigned long)mfn_to_page(epfn);
@@ -744,7 +741,7 @@ static void cleanup_frame_table(struct mem_hotadd_info *info)
         if ( (l2e_get_flags(l2e) & (_PAGE_PRESENT | _PAGE_PSE)) ==
               (_PAGE_PSE | _PAGE_PRESENT) )
         {
-            if (hotadd_mem_valid(l2e_get_pfn(l2e), info))
+            if ( hotadd_mem_valid(l2e_get_pfn(l2e), &info) )
                 destroy_xen_mappings(sva & ~((1UL << L2_PAGETABLE_SHIFT) - 1),
                          ((sva & ~((1UL << L2_PAGETABLE_SHIFT) -1 )) +
                             (1UL << L2_PAGETABLE_SHIFT) - 1));
@@ -769,28 +766,33 @@ static int setup_frametable_chunk(void *start, void *end,
 {
     unsigned long s = (unsigned long)start;
     unsigned long e = (unsigned long)end;
-    unsigned long mfn;
-    int err;
+    unsigned long cur, mfn;
+    int err = 0;
 
     ASSERT(!(s & ((1 << L2_PAGETABLE_SHIFT) - 1)));
     ASSERT(!(e & ((1 << L2_PAGETABLE_SHIFT) - 1)));
 
-    for ( ; s < e; s += (1UL << L2_PAGETABLE_SHIFT))
+    for ( cur = s; cur < e; cur += (1UL << L2_PAGETABLE_SHIFT) )
     {
         mfn = alloc_hotadd_mfn(info);
-        err = map_pages_to_xen(s, mfn, 1UL << PAGETABLE_ORDER,
+        err = map_pages_to_xen(cur, mfn, 1UL << PAGETABLE_ORDER,
                                PAGE_HYPERVISOR);
         if ( err )
-            return err;
+            break;
     }
-    memset(start, -1, s - (unsigned long)start);
 
-    return 0;
+    if ( !err )
+        memset(start, -1, cur - s);
+    else
+        destroy_xen_mappings(s, cur);
+
+    return err;
 }
 
 static int extend_frame_table(struct mem_hotadd_info *info)
 {
     unsigned long cidx, nidx, eidx, spfn, epfn;
+    int err = 0;
 
     spfn = info->spfn;
     epfn = info->epfn;
@@ -809,8 +811,6 @@ static int extend_frame_table(struct mem_hotadd_info *info)
 
     while ( cidx < eidx )
     {
-        int err;
-
         nidx = find_next_bit(pdx_group_valid, eidx, cidx);
         if ( nidx >= eidx )
             nidx = eidx;
@@ -818,14 +818,19 @@ static int extend_frame_table(struct mem_hotadd_info *info)
                                      pdx_to_page(nidx * PDX_GROUP_COUNT),
                                      info);
         if ( err )
-            return err;
+            break;
 
         cidx = find_next_zero_bit(pdx_group_valid, eidx, nidx);
     }
 
-    memset(mfn_to_page(spfn), 0,
-           (unsigned long)mfn_to_page(epfn) - (unsigned long)mfn_to_page(spfn));
-    return 0;
+    if ( !err )
+        memset(mfn_to_page(spfn), 0,
+               (unsigned long)mfn_to_page(epfn) -
+               (unsigned long)mfn_to_page(spfn));
+    else
+        cleanup_frame_table(spfn, pdx_to_pfn(cidx * PDX_GROUP_COUNT));
+
+    return err;
 }
 
 void __init subarch_init_memory(void)
@@ -1404,8 +1409,8 @@ int memory_add(unsigned long spfn, unsigned long epfn, unsigned int pxm)
     info.cur = spfn;
 
     ret = extend_frame_table(&info);
-    if (ret)
-        goto destroy_frametable;
+    if ( ret )
+        goto restore_node_status;
 
     /* Set max_page as setup_m2p_table will use it*/
     if (max_page < epfn)
@@ -1448,8 +1453,8 @@ destroy_m2p:
     max_page = old_max;
     total_pages = old_total;
     max_pdx = pfn_to_pdx(max_page - 1) + 1;
-destroy_frametable:
-    cleanup_frame_table(&info);
+    cleanup_frame_table(spfn, epfn);
+restore_node_status:
     if ( !orig_online )
         node_set_offline(node);
     NODE_DATA(node)->node_start_pfn = old_node_start;
