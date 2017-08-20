@@ -1337,20 +1337,15 @@ static int mem_hotadd_check(unsigned long spfn, unsigned long epfn)
     return 1;
 }
 
-/*
- * A bit paranoid for memory allocation failure issue since
- * it may be reason for memory add
- */
-int memory_add(unsigned long spfn, unsigned long epfn, unsigned int pxm)
+static int memory_add_common(struct mem_hotadd_info *info,
+                             unsigned int pxm, bool direct_map)
 {
-    struct mem_hotadd_info info;
+    unsigned long spfn = info->spfn, epfn = info->epfn;
     int ret;
     nodeid_t node;
     unsigned long old_max = max_page, old_total = total_pages;
     unsigned long old_node_start, old_node_span, orig_online;
     unsigned long i;
-
-    dprintk(XENLOG_INFO, "memory_add %lx ~ %lx with pxm %x\n", spfn, epfn, pxm);
 
     if ( !mem_hotadd_check(spfn, epfn) )
         return -EINVAL;
@@ -1366,22 +1361,25 @@ int memory_add(unsigned long spfn, unsigned long epfn, unsigned int pxm)
         return -EINVAL;
     }
 
-    i = virt_to_mfn(HYPERVISOR_VIRT_END - 1) + 1;
-    if ( spfn < i )
+    if ( direct_map )
     {
-        ret = map_pages_to_xen((unsigned long)mfn_to_virt(spfn), spfn,
-                               min(epfn, i) - spfn, PAGE_HYPERVISOR);
-        if ( ret )
-            goto destroy_directmap;
-    }
-    if ( i < epfn )
-    {
-        if ( i < spfn )
-            i = spfn;
-        ret = map_pages_to_xen((unsigned long)mfn_to_virt(i), i,
-                               epfn - i, __PAGE_HYPERVISOR_RW);
-        if ( ret )
-            goto destroy_directmap;
+        i = virt_to_mfn(HYPERVISOR_VIRT_END - 1) + 1;
+        if ( spfn < i )
+        {
+            ret = map_pages_to_xen((unsigned long)mfn_to_virt(spfn), spfn,
+                                   min(epfn, i) - spfn, PAGE_HYPERVISOR);
+            if ( ret )
+                goto destroy_directmap;
+        }
+        if ( i < epfn )
+        {
+            if ( i < spfn )
+                i = spfn;
+            ret = map_pages_to_xen((unsigned long)mfn_to_virt(i), i,
+                                   epfn - i, __PAGE_HYPERVISOR_RW);
+            if ( ret )
+                goto destroy_directmap;
+        }
     }
 
     old_node_start = node_start_pfn(node);
@@ -1398,22 +1396,18 @@ int memory_add(unsigned long spfn, unsigned long epfn, unsigned int pxm)
     }
     else
     {
-        if (node_start_pfn(node) > spfn)
+        if ( node_start_pfn(node) > spfn )
             NODE_DATA(node)->node_start_pfn = spfn;
-        if (node_end_pfn(node) < epfn)
+        if ( node_end_pfn(node) < epfn )
             NODE_DATA(node)->node_spanned_pages = epfn - node_start_pfn(node);
     }
 
-    info.spfn = spfn;
-    info.epfn = epfn;
-    info.cur = spfn;
-
-    ret = extend_frame_table(&info);
+    ret = extend_frame_table(info);
     if ( ret )
         goto restore_node_status;
 
     /* Set max_page as setup_m2p_table will use it*/
-    if (max_page < epfn)
+    if ( max_page < epfn )
     {
         max_page = epfn;
         max_pdx = pfn_to_pdx(max_page - 1) + 1;
@@ -1421,7 +1415,7 @@ int memory_add(unsigned long spfn, unsigned long epfn, unsigned int pxm)
     total_pages += epfn - spfn;
 
     set_pdx_range(spfn, epfn);
-    ret = setup_m2p_table(&info);
+    ret = setup_m2p_table(info);
 
     if ( ret )
         goto destroy_m2p;
@@ -1429,11 +1423,12 @@ int memory_add(unsigned long spfn, unsigned long epfn, unsigned int pxm)
     if ( iommu_enabled && !iommu_passthrough && !need_iommu(hardware_domain) )
     {
         for ( i = spfn; i < epfn; i++ )
-            if ( iommu_map_page(hardware_domain, i, i, IOMMUF_readable|IOMMUF_writable) )
+            if ( iommu_map_page(hardware_domain, i, i,
+                                IOMMUF_readable|IOMMUF_writable) )
                 break;
         if ( i != epfn )
         {
-            while (i-- > old_max)
+            while ( i-- > old_max )
                 /* If statement to satisfy __must_check. */
                 if ( iommu_unmap_page(hardware_domain, i) )
                     continue;
@@ -1442,14 +1437,10 @@ int memory_add(unsigned long spfn, unsigned long epfn, unsigned int pxm)
         }
     }
 
-    /* We can't revert any more */
-    share_hotadd_m2p_table(&info);
-    transfer_pages_to_heap(&info);
-
     return 0;
 
 destroy_m2p:
-    destroy_m2p_mapping(&info);
+    destroy_m2p_mapping(info);
     max_page = old_max;
     total_pages = old_total;
     max_pdx = pfn_to_pdx(max_page - 1) + 1;
@@ -1459,9 +1450,32 @@ restore_node_status:
         node_set_offline(node);
     NODE_DATA(node)->node_start_pfn = old_node_start;
     NODE_DATA(node)->node_spanned_pages = old_node_span;
- destroy_directmap:
-    destroy_xen_mappings((unsigned long)mfn_to_virt(spfn),
-                         (unsigned long)mfn_to_virt(epfn));
+destroy_directmap:
+    if ( direct_map )
+        destroy_xen_mappings((unsigned long)mfn_to_virt(spfn),
+                             (unsigned long)mfn_to_virt(epfn));
+
+    return ret;
+}
+
+/*
+ * A bit paranoid for memory allocation failure issue since
+ * it may be reason for memory add
+ */
+int memory_add(unsigned long spfn, unsigned long epfn, unsigned int pxm)
+{
+    struct mem_hotadd_info info = { .spfn = spfn, .epfn = epfn, .cur = spfn };
+    int ret;
+
+    dprintk(XENLOG_INFO, "memory_add %lx ~ %lx with pxm %x\n", spfn, epfn, pxm);
+
+    ret = memory_add_common(&info, pxm, true);
+    if ( !ret )
+    {
+        /* We can't revert any more */
+        share_hotadd_m2p_table(&info);
+        transfer_pages_to_heap(&info);
+    }
 
     return ret;
 }
