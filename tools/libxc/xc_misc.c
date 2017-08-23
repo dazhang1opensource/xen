@@ -1016,6 +1016,23 @@ int xc_nvdimm_pmem_setup_mgmt(xc_interface *xch,
     return rc;
 }
 
+int xc_nvdimm_pmem_setup_data(xc_interface *xch,
+                              unsigned long smfn, unsigned long emfn,
+                              unsigned long mgmt_smfn, unsigned long mgmt_emfn)
+{
+    DECLARE_SYSCTL;
+    int rc;
+
+    xc_nvdimm_pmem_setup_common(&sysctl, smfn, emfn, mgmt_smfn, mgmt_emfn);
+    sysctl.u.nvdimm.u.pmem_setup.type = PMEM_REGION_TYPE_DATA;
+
+    rc = do_sysctl(xch, &sysctl);
+    if ( rc && sysctl.u.nvdimm.err )
+        rc = -sysctl.u.nvdimm.err;
+
+    return rc;
+}
+
 /*
  * Local variables:
  * mode: C
