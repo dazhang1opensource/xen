@@ -1052,6 +1052,7 @@ struct xen_sysctl_set_parameter {
 /* Types of PMEM regions */
 #define PMEM_REGION_TYPE_RAW        0 /* PMEM regions detected by Xen */
 #define PMEM_REGION_TYPE_MGMT       1 /* PMEM regions for management usage */
+#define PMEM_REGION_TYPE_DATA       2 /* PMEM regions for guest data */
 
 /* PMEM_REGION_TYPE_RAW */
 struct xen_sysctl_nvdimm_pmem_raw_region {
@@ -1107,7 +1108,7 @@ struct xen_sysctl_nvdimm_pmem_setup {
                         /* above PMEM region. If the above PMEM region is */
                         /* a management region, mgmt_{s,e}mfn is required */
                         /* to be identical to {s,e}mfn. */
-    uint8_t  type;      /* Only PMEM_REGION_TYPE_MGMT is supported now */
+    uint8_t  type;      /* Must be one of PMEM_REGION_TYPE_{MGMT, DATA} */
 };
 typedef struct xen_sysctl_nvdimm_pmem_setup xen_sysctl_nvdimm_pmem_setup_t;
 DEFINE_XEN_GUEST_HANDLE(xen_sysctl_nvdimm_pmem_setup_t);

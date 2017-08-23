@@ -34,16 +34,26 @@ static unsigned int nr_raw_regions;
 /*
  * All PMEM regions reserved for management purpose are linked to this
  * list. All of them must be covered by one or multiple PMEM regions
- * in list pmem_raw_regions.
+ * in list pmem_raw_regions, and not appear in list pmem_data_regions.
  */
 static LIST_HEAD(pmem_mgmt_regions);
 static DEFINE_SPINLOCK(pmem_mgmt_lock);
 static unsigned int nr_mgmt_regions;
 
+/*
+ * All PMEM regions that can be mapped to guest are linked to this
+ * list. All of them must be covered by one or multiple PMEM regions
+ * in list pmem_raw_regions, and not appear in list pmem_mgmt_regions.
+ */
+static LIST_HEAD(pmem_data_regions);
+static DEFINE_SPINLOCK(pmem_data_lock);
+static unsigned int nr_data_regions;
+
 struct pmem {
     struct list_head link; /* link to one of PMEM region list */
     unsigned long smfn;    /* start MFN of the PMEM region */
     unsigned long emfn;    /* end MFN of the PMEM region */
+    spinlock_t lock;
 
     union {
         struct {
@@ -53,6 +63,11 @@ struct pmem {
         struct {
             unsigned long used; /* # of used pages in MGMT PMEM region */
         } mgmt;
+
+        struct {
+            unsigned long mgmt_smfn; /* start MFN of management region */
+            unsigned long mgmt_emfn; /* end MFN of management region */
+        } data;
     } u;
 };
 
@@ -105,6 +120,7 @@ static int pmem_list_add(struct list_head *list,
 
     new_pmem->smfn = smfn;
     new_pmem->emfn = emfn;
+    spin_lock_init(&new_pmem->lock);
     list_add(&new_pmem->link, cur);
     if ( entry )
         *entry = new_pmem;
@@ -253,9 +269,16 @@ static int pmem_get_regions(xen_sysctl_nvdimm_pmem_regions_t *regions)
 
 static bool check_mgmt_size(unsigned long mgmt_mfns, unsigned long total_mfns)
 {
-    return mgmt_mfns >=
+    unsigned long required =
         ((sizeof(struct page_info) * total_mfns) >> PAGE_SHIFT) +
         ((sizeof(*machine_to_phys_mapping) * total_mfns) >> PAGE_SHIFT);
+
+    if ( required > mgmt_mfns )
+        printk(XENLOG_DEBUG "PMEM: insufficient management pages, "
+               "0x%lx pages required, 0x%lx pages available\n",
+               required, mgmt_mfns);
+
+    return mgmt_mfns >= required;
 }
 
 static bool check_address_and_pxm(unsigned long smfn, unsigned long emfn,
@@ -333,6 +356,93 @@ static int pmem_setup_mgmt(unsigned long smfn, unsigned long emfn)
     return rc;
 }
 
+static struct pmem *find_mgmt_region(unsigned long smfn, unsigned long emfn)
+{
+    struct list_head *cur;
+
+    ASSERT(spin_is_locked(&pmem_mgmt_lock));
+
+    list_for_each(cur, &pmem_mgmt_regions)
+    {
+        struct pmem *mgmt = list_entry(cur, struct pmem, link);
+
+        if ( smfn >= mgmt->smfn && emfn <= mgmt->emfn )
+            return mgmt;
+    }
+
+    return NULL;
+}
+
+static int pmem_setup_data(unsigned long smfn, unsigned long emfn,
+                           unsigned long mgmt_smfn, unsigned long mgmt_emfn)
+{
+    struct pmem *data, *mgmt = NULL;
+    unsigned long used_mgmt_mfns;
+    unsigned int pxm;
+    int rc;
+
+    if ( smfn == mfn_x(INVALID_MFN) || emfn == mfn_x(INVALID_MFN) ||
+         smfn >= emfn )
+        return -EINVAL;
+
+    /*
+     * Require the PMEM region in one proximity domain, in order to
+     * avoid the error recovery from multiple calls to pmem_arch_setup()
+     * which is not revertible.
+     */
+    if ( !check_address_and_pxm(smfn, emfn, &pxm) )
+        return -EINVAL;
+
+    if ( mgmt_smfn == mfn_x(INVALID_MFN) || mgmt_emfn == mfn_x(INVALID_MFN) ||
+         mgmt_smfn >= mgmt_emfn )
+        return -EINVAL;
+
+    spin_lock(&pmem_mgmt_lock);
+    mgmt = find_mgmt_region(mgmt_smfn, mgmt_emfn);
+    if ( !mgmt )
+    {
+        spin_unlock(&pmem_mgmt_lock);
+        return -ENXIO;
+    }
+    spin_unlock(&pmem_mgmt_lock);
+
+    spin_lock(&mgmt->lock);
+
+    mgmt_smfn = mgmt->smfn + mgmt->u.mgmt.used;
+    if ( !check_mgmt_size(mgmt_emfn - mgmt_smfn, emfn - smfn) )
+    {
+        spin_unlock(&mgmt->lock);
+        return -ENOSPC;
+    }
+
+    spin_lock(&pmem_data_lock);
+
+    rc = pmem_list_add(&pmem_data_regions, smfn, emfn, &data);
+    if ( rc )
+        goto out;
+    data->u.data.mgmt_smfn = data->u.data.mgmt_emfn = mfn_x(INVALID_MFN);
+
+    rc = pmem_arch_setup(smfn, emfn, pxm,
+                         mgmt_smfn, mgmt_emfn, &used_mgmt_mfns);
+    if ( rc )
+    {
+        pmem_list_del(data);
+        goto out;
+    }
+
+    mgmt->u.mgmt.used = mgmt_smfn - mgmt->smfn + used_mgmt_mfns;
+    data->u.data.mgmt_smfn = mgmt_smfn;
+    data->u.data.mgmt_emfn = mgmt->smfn + mgmt->u.mgmt.used;
+
+    nr_data_regions++;
+
+ out:
+    spin_unlock(&pmem_data_lock);
+    spin_unlock(&mgmt->lock);
+
+    return rc;
+}
+
 static int pmem_setup(unsigned long smfn, unsigned long emfn,
                       unsigned long mgmt_smfn, unsigned long mgmt_emfn,
                       unsigned int type)
@@ -350,6 +460,10 @@ static int pmem_setup(unsigned long smfn, unsigned long emfn,
 
         rc = pmem_setup_mgmt(smfn, emfn);
 
+        break;
+
+    case PMEM_REGION_TYPE_DATA:
+        rc = pmem_setup_data(smfn, emfn, mgmt_smfn, mgmt_emfn);
         break;
 
     default:

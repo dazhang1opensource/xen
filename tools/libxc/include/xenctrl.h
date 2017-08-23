@@ -2656,6 +2656,28 @@ int xc_nvdimm_pmem_get_regions(xc_interface *xch, uint8_t type,
 int xc_nvdimm_pmem_setup_mgmt(xc_interface *xch,
                               unsigned long smfn, unsigned long emfn);
 
+/*
+ * Setup the specified PMEM pages for guest data usage. If success,
+ * these PMEM page can be mapped to guest and be used as the backend
+ * of vNDIMM devices.
+ *
+ * Parameters:
+ *  xch:        xc interface handle
+ *  smfn, emfn: the start and end of the PMEM region
+ *  mgmt_smfn,
+
+ *  mgmt_emfn:  the start and the end MFN of the PMEM region that is
+ *              used to manage this PMEM region. It must be in one of
+ *              those added by xc_nvdimm_pmem_setup_mgmt() calls, and
+ *              not overlap with @smfn - @emfn.
+ *
+ * Return:
+ *  On success, return 0. Otherwise, return a non-zero error code.
+ */
+int xc_nvdimm_pmem_setup_data(xc_interface *xch,
+                              unsigned long smfn, unsigned long emfn,
+                              unsigned long mgmt_smfn, unsigned long mgmt_emfn);
+
 /* Compat shims */
 #include "xenctrl_compat.h"
 
