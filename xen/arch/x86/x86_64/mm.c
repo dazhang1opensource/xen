@@ -106,13 +106,44 @@ struct mem_hotadd_info
     unsigned long cur;
 };
 
+struct mem_hotadd_alloc
+{
+    /*
+     * Allocate 2^PAGETABLE_ORDER pages.
+     *
+     * No free function is added right now, so we require that all
+     * allocated pages can be reclaimed easily or has no effect out of
+     * memory_add_common(), if memory_add_common() fails.
+     *
+     * For example, alloc_hotadd_mfn(), which is used in RAM hotplug,
+     * allocates pages from the hotplugged RAM. If memory_add_common()
+     * fails, the hotplugged RAM will not be available to Xen, so
+     * pages allocated by alloc_hotadd_mfns() will never be used and
+     * have no effect.
+     *
+     * Parameters:
+     *  opaque:   arguments of the allocator (depending on the implementation)
+     *
+     * Return:
+     *  On success, return MFN of the first page.
+     *  Otherwise, return mfn_x(INVALID_MFN).
+     */
+    unsigned long (*alloc_mfns)(void *opaque);
+
+    /*
+     * Additional arguments passed to @alloc_mfns().
+     */
+    void *opaque;
+};
+
 static int hotadd_mem_valid(unsigned long pfn, struct mem_hotadd_info *info)
 {
     return (pfn < info->epfn && pfn >= info->spfn);
 }
 
-static unsigned long alloc_hotadd_mfn(struct mem_hotadd_info *info)
+static unsigned long alloc_hotadd_mfn(void *opaque)
 {
+    struct mem_hotadd_info *info = opaque;
     unsigned mfn;
 
     ASSERT((info->cur + ( 1UL << PAGETABLE_ORDER) < info->epfn) &&
@@ -315,7 +346,8 @@ static void destroy_m2p_mapping(struct mem_hotadd_info *info)
  * spfn/epfn: the pfn ranges to be setup
  * free_s/free_e: the pfn ranges that is free still
  */
-static int setup_compat_m2p_table(struct mem_hotadd_info *info)
+static int setup_compat_m2p_table(struct mem_hotadd_info *info,
+                                  struct mem_hotadd_alloc *alloc)
 {
     unsigned long i, va, smap, emap, rwva, epfn = info->epfn, mfn;
     unsigned int n;
@@ -369,7 +401,13 @@ static int setup_compat_m2p_table(struct mem_hotadd_info *info)
         if ( n == CNT )
             continue;
 
-        mfn = alloc_hotadd_mfn(info);
+        mfn = alloc->alloc_mfns(alloc->opaque);
+        if ( mfn == mfn_x(INVALID_MFN) )
+        {
+            err = -ENOMEM;
+            break;
+        }
+
         err = map_pages_to_xen(rwva, mfn, 1UL << PAGETABLE_ORDER,
                                PAGE_HYPERVISOR);
         if ( err )
@@ -389,7 +427,8 @@ static int setup_compat_m2p_table(struct mem_hotadd_info *info)
  * Allocate and map the machine-to-phys table.
  * The L3 for RO/RWRW MPT and the L2 for compatible MPT should be setup already
  */
-static int setup_m2p_table(struct mem_hotadd_info *info)
+static int setup_m2p_table(struct mem_hotadd_info *info,
+                           struct mem_hotadd_alloc *alloc)
 {
     unsigned long i, va, smap, emap;
     unsigned int n;
@@ -438,7 +477,13 @@ static int setup_m2p_table(struct mem_hotadd_info *info)
                 break;
         if ( n < CNT )
         {
-            unsigned long mfn = alloc_hotadd_mfn(info);
+            unsigned long mfn = alloc->alloc_mfns(alloc->opaque);
+
+            if ( mfn == mfn_x(INVALID_MFN) )
+            {
+                ret = -ENOMEM;
+                goto error;
+            }
 
             ret = map_pages_to_xen(
                         RDWR_MPT_VIRT_START + i * sizeof(unsigned long),
@@ -483,7 +528,7 @@ static int setup_m2p_table(struct mem_hotadd_info *info)
 #undef CNT
 #undef MFN
 
-    ret = setup_compat_m2p_table(info);
+    ret = setup_compat_m2p_table(info, alloc);
 error:
     return ret;
 }
@@ -762,7 +807,7 @@ static void cleanup_frame_table(unsigned long spfn, unsigned long epfn)
 }
 
 static int setup_frametable_chunk(void *start, void *end,
-                                  struct mem_hotadd_info *info)
+                                  struct mem_hotadd_alloc *alloc)
 {
     unsigned long s = (unsigned long)start;
     unsigned long e = (unsigned long)end;
@@ -774,7 +819,13 @@ static int setup_frametable_chunk(void *start, void *end,
 
     for ( cur = s; cur < e; cur += (1UL << L2_PAGETABLE_SHIFT) )
     {
-        mfn = alloc_hotadd_mfn(info);
+        mfn = alloc->alloc_mfns(alloc->opaque);
+        if ( mfn == mfn_x(INVALID_MFN) )
+        {
+            err = -ENOMEM;
+            break;
+        }
+
         err = map_pages_to_xen(cur, mfn, 1UL << PAGETABLE_ORDER,
                                PAGE_HYPERVISOR);
         if ( err )
@@ -789,7 +840,8 @@ static int setup_frametable_chunk(void *start, void *end,
     return err;
 }
 
-static int extend_frame_table(struct mem_hotadd_info *info)
+static int extend_frame_table(struct mem_hotadd_info *info,
+                              struct mem_hotadd_alloc *alloc)
 {
     unsigned long cidx, nidx, eidx, spfn, epfn;
     int err = 0;
@@ -816,7 +868,7 @@ static int extend_frame_table(struct mem_hotadd_info *info)
             nidx = eidx;
         err = setup_frametable_chunk(pdx_to_page(cidx * PDX_GROUP_COUNT ),
                                      pdx_to_page(nidx * PDX_GROUP_COUNT),
-                                     info);
+                                     alloc);
         if ( err )
             break;
 
@@ -1338,7 +1390,8 @@ static int mem_hotadd_check(unsigned long spfn, unsigned long epfn)
 }
 
 static int memory_add_common(struct mem_hotadd_info *info,
-                             unsigned int pxm, bool direct_map)
+                             unsigned int pxm, bool direct_map,
+                             struct mem_hotadd_alloc *alloc)
 {
     unsigned long spfn = info->spfn, epfn = info->epfn;
     int ret;
@@ -1402,7 +1455,7 @@ static int memory_add_common(struct mem_hotadd_info *info,
             NODE_DATA(node)->node_spanned_pages = epfn - node_start_pfn(node);
     }
 
-    ret = extend_frame_table(info);
+    ret = extend_frame_table(info, alloc);
     if ( ret )
         goto restore_node_status;
 
@@ -1415,7 +1468,7 @@ static int memory_add_common(struct mem_hotadd_info *info,
     total_pages += epfn - spfn;
 
     set_pdx_range(spfn, epfn);
-    ret = setup_m2p_table(info);
+    ret = setup_m2p_table(info, alloc);
 
     if ( ret )
         goto destroy_m2p;
@@ -1465,11 +1518,13 @@ destroy_directmap:
 int memory_add(unsigned long spfn, unsigned long epfn, unsigned int pxm)
 {
     struct mem_hotadd_info info = { .spfn = spfn, .epfn = epfn, .cur = spfn };
+    struct mem_hotadd_alloc alloc =
+        { .alloc_mfns = alloc_hotadd_mfn, .opaque = &info };
     int ret;
 
     dprintk(XENLOG_INFO, "memory_add %lx ~ %lx with pxm %x\n", spfn, epfn, pxm);
 
-    ret = memory_add_common(&info, pxm, true);
+    ret = memory_add_common(&info, pxm, true, &alloc);
     if ( !ret )
     {
         /* We can't revert any more */
