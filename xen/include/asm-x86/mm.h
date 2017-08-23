@@ -77,9 +77,11 @@
 #define PGC_state_offlined PG_mask(2, 9)
 #define PGC_state_free    PG_mask(3, 9)
 #define page_state_is(pg, st) (((pg)->count_info&PGC_state) == PGC_state_##st)
+/* Page is from PMEM? */
+#define PGC_pmem_page     PG_mask(1, 10)
 
  /* Count of references to this frame. */
-#define PGC_count_width   PG_shift(9)
+#define PGC_count_width   PG_shift(10)
 #define PGC_count_mask    ((1UL<<PGC_count_width)-1)
 
 /*
@@ -275,6 +277,12 @@ struct page_info
 #define is_xen_fixed_mfn(mfn)                     \
     ((((mfn) << PAGE_SHIFT) >= __pa(&_stext)) &&  \
      (((mfn) << PAGE_SHIFT) <= __pa(&__2M_rwdata_end)))
+
+#ifdef CONFIG_NVDIMM_PMEM
+#define is_pmem_page(page) ((page)->count_info & PGC_pmem_page)
+#else
+#define is_pmem_page(page) false
+#endif
 
 #define PRtype_info "016lx"/* should only be used for printk's */
 

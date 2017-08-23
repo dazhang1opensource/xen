@@ -1536,6 +1536,78 @@ int memory_add(unsigned long spfn, unsigned long epfn, unsigned int pxm)
     return ret;
 }
 
+#ifdef CONFIG_NVDIMM_PMEM
+
+static void pmem_init_frame_table(unsigned long smfn, unsigned long emfn)
+{
+    struct page_info *page = mfn_to_page(smfn), *epage = mfn_to_page(emfn);
+
+    while ( page < epage )
+    {
+        page->count_info = PGC_state_free | PGC_pmem_page;
+        page++;
+    }
+}
+
+/**
+ * Initialize frametable and M2P for the specified PMEM region.
+ *
+ * Parameters:
+ *  smfn, emfn: the start and end MFN of the PMEM region
+ *  mgmt_smfn,
+ *  mgmt_emfn:  the start and end MFN of the PMEM region used to store
+ *              the frame table and M2P table of above PMEM region. If
+ *              @smfn - @emfn is going to be mapped to guest, it should
+ *              not overlap with @mgmt_smfn - @mgmt_emfn. If @smfn - @emfn
+ *              is going to be used for management purpose, it should
+ *              be identical to @mgmt_smfn - @mgnt_emfn.
+ *  used_mgmt_mfns: return the number of pages used in @mgmt_smfn - @mgmt_emfn
+ *
+ * Return:
+ *  On success, return 0. Otherwise, return a non-zero error code.
+ */
+int pmem_arch_setup(unsigned long smfn, unsigned long emfn, unsigned int pxm,
+                    unsigned long mgmt_smfn, unsigned long mgmt_emfn,
+                    unsigned long *used_mgmt_mfns)
+{
+    struct mem_hotadd_info info =
+        { .spfn = smfn, .epfn = emfn, .cur = smfn };
+    struct mem_hotadd_info mgmt_info =
+        { .spfn = mgmt_smfn, .epfn = mgmt_emfn, .cur = mgmt_smfn };
+    struct mem_hotadd_alloc alloc =
+    {
+        .alloc_mfns = alloc_hotadd_mfn,
+        .opaque     = &mgmt_info
+    };
+    bool is_mgmt = (mgmt_smfn == smfn && mgmt_emfn == emfn);
+    int rc;
+
+    if ( mgmt_smfn == mfn_x(INVALID_MFN) || mgmt_emfn == mfn_x(INVALID_MFN) ||
+         mgmt_smfn >= mgmt_emfn )
+        return -EINVAL;
+
+    if ( !is_mgmt &&
+         ((smfn >= mgmt_smfn && smfn < mgmt_emfn) ||
+          (emfn > mgmt_smfn && emfn <= mgmt_emfn)) )
+        return -EINVAL;
+
+    rc = memory_add_common(&info, pxm, false, &alloc);
+    if ( rc )
+        return rc;
+
+    pmem_init_frame_table(smfn, emfn);
+
+    if ( !is_mgmt )
+        share_hotadd_m2p_table(&info);
+
+    if ( used_mgmt_mfns )
+        *used_mgmt_mfns = mgmt_info.cur - mgmt_info.spfn;
+
+    return 0;
+}
+
+#endif /* CONFIG_NVDIMM_PMEM */
+
 #include "compat/mm.c"
 
 /*

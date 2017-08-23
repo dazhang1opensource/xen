@@ -551,7 +551,7 @@ void share_xen_page_with_guest(
 
     page_set_owner(page, d);
     smp_wmb(); /* install valid domain ptr before updating refcnt. */
-    ASSERT((page->count_info & ~PGC_xen_heap) == 0);
+    ASSERT((page->count_info & ~(PGC_xen_heap | PGC_pmem_page)) == 0);
 
     /* Only add to the allocation list if the domain isn't dying. */
     if ( !d->is_dying )
@@ -2322,7 +2322,8 @@ void put_page(struct page_info *page)
 
     if ( unlikely((nx & PGC_count_mask) == 0) )
     {
-        if ( cleanup_page_cacheattr(page) == 0 )
+        if ( !is_pmem_page(page) /* PMEM page is not allocated from Xen heap. */
+             && cleanup_page_cacheattr(page) == 0 )
             free_domheap_page(page);
         else
             gdprintk(XENLOG_WARNING,
