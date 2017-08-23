@@ -31,6 +31,15 @@
 static LIST_HEAD(pmem_raw_regions);
 static unsigned int nr_raw_regions;
 
+/*
+ * All PMEM regions reserved for management purpose are linked to this
+ * list. All of them must be covered by one or multiple PMEM regions
+ * in list pmem_raw_regions.
+ */
+static LIST_HEAD(pmem_mgmt_regions);
+static DEFINE_SPINLOCK(pmem_mgmt_lock);
+static unsigned int nr_mgmt_regions;
+
 struct pmem {
     struct list_head link; /* link to one of PMEM region list */
     unsigned long smfn;    /* start MFN of the PMEM region */
@@ -40,6 +49,10 @@ struct pmem {
         struct {
             unsigned int pxm; /* proximity domain of the PMEM region */
         } raw;
+
+        struct {
+            unsigned long used; /* # of used pages in MGMT PMEM region */
+        } mgmt;
     } u;
 };
 
@@ -97,6 +110,18 @@ static int pmem_list_add(struct list_head *list,
         *entry = new_pmem;
 
     return 0;
+}
+
+/**
+ * Delete the specified entry from the list to which it's currently linked.
+ *
+ * Parameters:
+ *  entry: the entry to be deleted
+ */
+static void pmem_list_del(struct pmem *entry)
+{
+    list_del(&entry->link);
+    xfree(entry);
 }
 
 static int pmem_get_regions_nr(xen_sysctl_nvdimm_pmem_regions_nr_t *regions_nr)
@@ -177,6 +202,114 @@ static int pmem_get_regions(xen_sysctl_nvdimm_pmem_regions_t *regions)
     return rc;
 }
 
+static bool check_mgmt_size(unsigned long mgmt_mfns, unsigned long total_mfns)
+{
+    return mgmt_mfns >=
+        ((sizeof(struct page_info) * total_mfns) >> PAGE_SHIFT) +
+        ((sizeof(*machine_to_phys_mapping) * total_mfns) >> PAGE_SHIFT);
+}
+
+static bool check_address_and_pxm(unsigned long smfn, unsigned long emfn,
+                                  unsigned int *ret_pxm)
+{
+    struct list_head *cur;
+    long pxm = -1;
+
+    list_for_each(cur, &pmem_raw_regions)
+    {
+        struct pmem *raw = list_entry(cur, struct pmem, link);
+        unsigned long raw_smfn = raw->smfn, raw_emfn = raw->emfn;
+
+        if ( !check_overlap(smfn, emfn, raw_smfn, raw_emfn) )
+            continue;
+
+        if ( smfn < raw_smfn )
+            return false;
+
+        if ( pxm != -1 && pxm != raw->u.raw.pxm )
+            return false;
+        pxm = raw->u.raw.pxm;
+
+        smfn = min(emfn, raw_emfn);
+        if ( smfn == emfn )
+            break;
+    }
+
+    *ret_pxm = pxm;
+
+    return smfn == emfn;
+}
+
+static int pmem_setup_mgmt(unsigned long smfn, unsigned long emfn)
+{
+    struct pmem *mgmt;
+    unsigned long used_mgmt_mfns;
+    unsigned int pxm;
+    int rc;
+
+    if ( smfn == mfn_x(INVALID_MFN) || emfn == mfn_x(INVALID_MFN) ||
+         smfn >= emfn )
+        return -EINVAL;
+
+    /*
+     * Require the PMEM region in one proximity domain, in order to
+     * avoid the error recovery from multiple calls to pmem_arch_setup()
+     * which is not revertible.
+     */
+    if ( !check_address_and_pxm(smfn, emfn, &pxm) )
+        return -EINVAL;
+
+    if ( !check_mgmt_size(emfn - smfn, emfn - smfn) )
+        return -ENOSPC;
+
+    spin_lock(&pmem_mgmt_lock);
+
+    rc = pmem_list_add(&pmem_mgmt_regions, smfn, emfn, &mgmt);
+    if ( rc )
+        goto out;
+
+    rc = pmem_arch_setup(smfn, emfn, pxm, smfn, emfn, &used_mgmt_mfns);
+    if ( rc )
+    {
+        pmem_list_del(mgmt);
+        goto out;
+    }
+
+    mgmt->u.mgmt.used = used_mgmt_mfns;
+    nr_mgmt_regions++;
+
+ out:
+    spin_unlock(&pmem_mgmt_lock);
+
+    return rc;
+}
+
+static int pmem_setup(unsigned long smfn, unsigned long emfn,
+                      unsigned long mgmt_smfn, unsigned long mgmt_emfn,
+                      unsigned int type)
+{
+    int rc;
+
+    switch ( type )
+    {
+    case PMEM_REGION_TYPE_MGMT:
+        if ( smfn != mgmt_smfn || emfn != mgmt_emfn )
+        {
+            rc = -EINVAL;
+            break;
+        }
+
+        rc = pmem_setup_mgmt(smfn, emfn);
+
+        break;
+
+    default:
+        rc = -EINVAL;
+    }
+
+    return rc;
+}
+
 /**
  * Register a pmem region to Xen.
  *
@@ -225,6 +358,15 @@ int pmem_do_sysctl(struct xen_sysctl_nvdimm_op *nvdimm)
     case XEN_SYSCTL_nvdimm_pmem_get_regions:
         rc = pmem_get_regions(&nvdimm->u.pmem_regions);
         break;
+
+    case XEN_SYSCTL_nvdimm_pmem_setup:
+    {
+        struct xen_sysctl_nvdimm_pmem_setup *setup = &nvdimm->u.pmem_setup;
+        rc = pmem_setup(setup->smfn, setup->emfn,
+                        setup->mgmt_smfn, setup->mgmt_emfn,
+                        setup->type);
+        break;
+    }
 
     default:
         rc = -ENOSYS;

@@ -29,10 +29,18 @@ int pmem_do_sysctl(struct xen_sysctl_nvdimm_op *nvdimm);
 #ifdef CONFIG_X86
 
 int pmem_dom0_setup_permission(struct domain *d);
+int pmem_arch_setup(unsigned long smfn, unsigned long emfn, unsigned int pxm,
+                    unsigned long mgmt_smfn, unsigned long mgmt_emfn,
+                    unsigned long *used_mgmt_mfns);
 
 #else /* !CONFIG_X86 */
 
 static inline int pmem_dom0_setup_permission(...)
+{
+    return -ENOSYS;
+}
+
+static inline int pmem_arch_setup(...)
 {
     return -ENOSYS;
 }

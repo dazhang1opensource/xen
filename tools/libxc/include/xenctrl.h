@@ -2640,6 +2640,22 @@ int xc_nvdimm_pmem_get_regions_nr(xc_interface *xch,
 int xc_nvdimm_pmem_get_regions(xc_interface *xch, uint8_t type,
                                void *buffer, uint32_t *nr);
 
+/*
+ * Setup the specified PMEM pages for management usage. If success,
+ * these PMEM pages can be used to store the frametable and M2P table
+ * of itself and other PMEM pages. These management PMEM pages will
+ * never be mapped to guest.
+ *
+ * Parameters:
+ *  xch:        xc interface handle
+ *  smfn, emfn: the start and end MFN of the PMEM region
+ *
+ * Return:
+ *  On success, return 0. Otherwise, return a non-zero error code.
+ */
+int xc_nvdimm_pmem_setup_mgmt(xc_interface *xch,
+                              unsigned long smfn, unsigned long emfn);
+
 /* Compat shims */
 #include "xenctrl_compat.h"
 
