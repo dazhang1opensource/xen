@@ -975,6 +975,40 @@ out:
     return rc;
 }
 
+static void xc_nvdimm_pmem_setup_common(struct xen_sysctl *sysctl,
+                                        unsigned long smfn, unsigned long emfn,
+                                        unsigned long mgmt_smfn,
+                                        unsigned long mgmt_emfn)
+{
+    xen_sysctl_nvdimm_op_t *nvdimm = &sysctl->u.nvdimm;
+    xen_sysctl_nvdimm_pmem_setup_t *setup = &nvdimm->u.pmem_setup;
+
+    sysctl->cmd = XEN_SYSCTL_nvdimm_op;
+    nvdimm->cmd = XEN_SYSCTL_nvdimm_pmem_setup;
+    nvdimm->pad = 0;
+    nvdimm->err = 0;
+    setup->smfn = smfn;
+    setup->emfn = emfn;
+    setup->mgmt_smfn = mgmt_smfn;
+    setup->mgmt_emfn = mgmt_emfn;
+}
+
+int xc_nvdimm_pmem_setup_mgmt(xc_interface *xch,
+                              unsigned long smfn, unsigned long emfn)
+{
+    DECLARE_SYSCTL;
+    int rc;
+
+    xc_nvdimm_pmem_setup_common(&sysctl, smfn, emfn, smfn, emfn);
+    sysctl.u.nvdimm.u.pmem_setup.type = PMEM_REGION_TYPE_MGMT;
+
+    rc = do_sysctl(xch, &sysctl);
+    if ( rc && sysctl.u.nvdimm.err )
+        rc = -sysctl.u.nvdimm.err;
+
+    return rc;
+}
+
 /*
  * Local variables:
  * mode: C

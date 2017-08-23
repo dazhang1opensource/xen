@@ -2341,7 +2341,8 @@ void put_page(struct page_info *page)
 
     if ( unlikely((nx & PGC_count_mask) == 0) )
     {
-        if ( cleanup_page_cacheattr(page) == 0 )
+        if ( !is_pmem_page(page) /* PMEM page is not allocated from Xen heap. */
+             && cleanup_page_cacheattr(page) == 0 )
             free_domheap_page(page);
         else
             gdprintk(XENLOG_WARNING,
