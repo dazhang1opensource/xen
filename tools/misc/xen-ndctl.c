@@ -37,6 +37,7 @@ static int handle_help(int argc, char *argv[]);
 static int handle_list(int argc, char *argv[]);
 static int handle_list_cmds(int argc, char *argv[]);
 static int handle_setup_mgmt(int argc, char *argv[]);
+static int handle_setup_data(int argc, char *argv[]);
 
 static const struct xen_ndctl_cmd
 {
@@ -70,6 +71,18 @@ static const struct xen_ndctl_cmd
         .syntax  = "",
         .help    = "List all supported commands.\n",
         .handler = handle_list_cmds,
+    },
+
+    {
+        .name    = "setup-data",
+        .syntax  = "<smfn> <emfn> <mgmt_smfn> <mgmt_emfn>",
+        .help    = "Setup a PMEM region from MFN 'smfn' to 'emfn' for guest data usage,\n"
+                   "which can be used as the backend of the virtual NVDIMM devices.\n\n"
+                   "PMEM pages from MFN 'mgmt_smfn' to 'mgmt_emfn' is used to manage\n"
+                   "the above PMEM region, and should not overlap with MFN from 'smfn'\n"
+                   "to 'emfn'.\n",
+        .handler = handle_setup_data,
+        .need_xc = true,
     },
 
     {
@@ -275,6 +288,29 @@ static int handle_setup_mgmt(int argc, char **argv)
         return handle_unrecognized_argument(argv[0], argv[3]);
 
     return xc_nvdimm_pmem_setup_mgmt(xch, smfn, emfn);
+}
+
+static int handle_setup_data(int argc, char **argv)
+{
+    unsigned long smfn, emfn, mgmt_smfn, mgmt_emfn;
+
+    if ( argc < 5 )
+    {
+        fprintf(stderr, "Too few arguments.\n\n");
+        show_help(argv[0]);
+        return -EINVAL;
+    }
+
+    if ( !string_to_mfn(argv[1], &smfn) ||
+         !string_to_mfn(argv[2], &emfn) ||
+         !string_to_mfn(argv[3], &mgmt_smfn) ||
+         !string_to_mfn(argv[4], &mgmt_emfn) )
+        return -EINVAL;
+
+    if ( argc > 5 )
+        return handle_unrecognized_argument(argv[0], argv[5]);
+
+    return xc_nvdimm_pmem_setup_data(xch, smfn, emfn, mgmt_smfn, mgmt_emfn);
 }
 
 int main(int argc, char *argv[])
