@@ -17,10 +17,12 @@
  */
 
 #include <xen/errno.h>
+#include <xen/event.h>
 #include <xen/list.h>
 #include <xen/iocap.h>
 #include <xen/paging.h>
 #include <xen/pmem.h>
+#include <xen/sched.h>
 
 #include <asm/guest_access.h>
 
@@ -76,6 +78,31 @@ static bool check_overlap(unsigned long smfn1, unsigned long emfn1,
 {
     return (smfn1 >= smfn2 && smfn1 < emfn2) ||
            (emfn1 > smfn2 && emfn1 <= emfn2);
+}
+
+static bool check_cover(struct list_head *list,
+                        unsigned long smfn, unsigned long emfn)
+{
+    struct list_head *cur;
+    struct pmem *pmem;
+    unsigned long pmem_smfn, pmem_emfn;
+
+    list_for_each(cur, list)
+    {
+        pmem = list_entry(cur, struct pmem, link);
+        pmem_smfn = pmem->smfn;
+        pmem_emfn = pmem->emfn;
+
+        if ( smfn < pmem_smfn )
+            return false;
+
+        if ( emfn <= pmem_emfn )
+            return true;
+
+        smfn = max(smfn, pmem_emfn);
+    }
+
+    return false;
 }
 
 /**
@@ -593,6 +620,120 @@ int pmem_do_sysctl(struct xen_sysctl_nvdimm_op *nvdimm)
 }
 
 #ifdef CONFIG_X86
+
+static int pmem_assign_page(struct domain *d, struct page_info *pg,
+                            unsigned long gfn)
+{
+    int rc;
+
+    if ( pg->count_info != (PGC_state_free | PGC_pmem_page) )
+        return -EBUSY;
+
+    pg->count_info = PGC_allocated | PGC_state_inuse | PGC_pmem_page | 1;
+    pg->u.inuse.type_info = 0;
+    page_set_owner(pg, d);
+
+    rc = guest_physmap_add_page(d, _gfn(gfn), _mfn(page_to_mfn(pg)), 0);
+    if ( rc )
+    {
+        page_set_owner(pg, NULL);
+        pg->count_info = PGC_state_free | PGC_pmem_page;
+
+        return rc;
+    }
+
+    spin_lock(&d->pmem_lock);
+    page_list_add_tail(pg, &d->pmem_page_list);
+    spin_unlock(&d->pmem_lock);
+
+    return 0;
+}
+
+static int pmem_unassign_page(struct domain *d, struct page_info *pg,
+                              unsigned long gfn)
+{
+    int rc;
+
+    spin_lock(&d->pmem_lock);
+    page_list_del(pg, &d->pmem_page_list);
+    spin_unlock(&d->pmem_lock);
+
+    rc = guest_physmap_remove_page(d, _gfn(gfn), _mfn(page_to_mfn(pg)), 0);
+
+    page_set_owner(pg, NULL);
+    pg->count_info = PGC_state_free | PGC_pmem_page;
+
+    return 0;
+}
+
+int pmem_populate(struct xen_pmem_map_args *args)
+{
+    struct domain *d = args->domain;
+    unsigned long i = args->nr_done;
+    unsigned long mfn = args->mfn + i;
+    unsigned long emfn = args->mfn + args->nr_mfns;
+    unsigned long gfn = args->gfn + i;
+    struct page_info *page;
+    int rc = 0, err = 0;
+
+    if ( unlikely(d->is_dying) )
+        return -EINVAL;
+
+    if ( !is_hvm_domain(d) )
+        return -EINVAL;
+
+    spin_lock(&pmem_data_lock);
+
+    if ( !check_cover(&pmem_data_regions, mfn, emfn) )
+    {
+        rc = -ENXIO;
+        goto out;
+    }
+
+    for ( ; mfn < emfn; i++, mfn++, gfn++ )
+    {
+        if ( i != args->nr_done && hypercall_preempt_check() )
+        {
+            args->preempted = 1;
+            rc = -ERESTART;
+            break;
+        }
+
+        page = mfn_to_page(mfn);
+        if ( !page_state_is(page, free) )
+        {
+            rc = -EBUSY;
+            break;
+        }
+
+        rc = pmem_assign_page(d, page, gfn);
+        if ( rc )
+            break;
+    }
+
+ out:
+    if ( rc && rc != -ERESTART )
+        while ( i-- && !err )
+            err = pmem_unassign_page(d, mfn_to_page(--mfn), --gfn);
+
+    spin_unlock(&pmem_data_lock);
+
+    if ( unlikely(err) )
+    {
+        /*
+         * If we unfortunately fails to recover from the previous
+         * failure, some PMEM pages may still be mapped to the
+         * domain. As pmem_populate() is now called only during domain
+         * creation, let's crash the domain.
+         */
+        domain_crash(d);
+        rc = err;
+    }
+
+    args->nr_done = i;
+
+    return rc;
+}
 
 int __init pmem_dom0_setup_permission(struct domain *d)
 {
