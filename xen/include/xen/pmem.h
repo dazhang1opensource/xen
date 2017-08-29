@@ -21,6 +21,7 @@
 #ifdef CONFIG_NVDIMM_PMEM
 
 #include <public/sysctl.h>
+#include <xen/mm.h>
 #include <xen/types.h>
 
 int pmem_register(unsigned long smfn, unsigned long emfn, unsigned int pxm);
@@ -46,6 +47,7 @@ struct xen_pmem_map_args {
 };
 
 int pmem_populate(struct xen_pmem_map_args *args);
+void pmem_page_cleanup(struct page_info *page);
 
 #else /* !CONFIG_X86 */
 
@@ -62,6 +64,10 @@ static inline int pmem_arch_setup(...)
 static inline int pmem_populate(...)
 {
     return -ENOSYS;
+}
+
+static inline void pmem_page_cleanup(...)
+{
 }
 
 #endif /* CONFIG_X86 */
