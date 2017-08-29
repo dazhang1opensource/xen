@@ -106,6 +106,7 @@
 #include <xen/efi.h>
 #include <xen/grant_table.h>
 #include <xen/hypercall.h>
+#include <xen/pmem.h>
 #include <asm/paging.h>
 #include <asm/shadow.h>
 #include <asm/page.h>
@@ -2341,8 +2342,12 @@ void put_page(struct page_info *page)
 
     if ( unlikely((nx & PGC_count_mask) == 0) )
     {
-        if ( !is_pmem_page(page) /* PMEM page is not allocated from Xen heap. */
-             && cleanup_page_cacheattr(page) == 0 )
+#ifdef CONFIG_NVDIMM_PMEM
+        if ( is_pmem_page(page) )
+            pmem_page_cleanup(page);
+        else
+#endif
+        if ( cleanup_page_cacheattr(page) == 0 )
             free_domheap_page(page);
         else
             gdprintk(XENLOG_WARNING,

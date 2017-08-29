@@ -303,6 +303,7 @@ struct arch_domain
     enum {
         RELMEM_not_started,
         RELMEM_shared,
+        RELMEM_pmem,
         RELMEM_xen,
         RELMEM_l4,
         RELMEM_l3,

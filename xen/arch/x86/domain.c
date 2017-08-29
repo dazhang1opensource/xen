@@ -1755,10 +1755,14 @@ static int relinquish_memory(
 {
     struct page_info  *page;
     unsigned long     x, y;
+    bool              is_pmem_list = (list == &d->pmem_page_list);
     int               ret = 0;
 
     /* Use a recursive lock, as we may enter 'free_domheap_page'. */
     spin_lock_recursive(&d->page_alloc_lock);
+
+    if ( is_pmem_list )
+        spin_lock(&d->pmem_lock);
 
     while ( (page = page_list_remove_head(list)) )
     {
@@ -1841,8 +1845,9 @@ static int relinquish_memory(
             }
         }
 
-        /* Put the page on the list and /then/ potentially free it. */
-        page_list_add_tail(page, &d->arch.relmem_list);
+        if ( !is_pmem_list )
+            /* Put the page on the list and /then/ potentially free it. */
+            page_list_add_tail(page, &d->arch.relmem_list);
         put_page(page);
 
         if ( hypercall_preempt_check() )
@@ -1852,10 +1857,13 @@ static int relinquish_memory(
         }
     }
 
-    /* list is empty at this point. */
-    page_list_move(list, &d->arch.relmem_list);
+    if ( !is_pmem_list )
+        /* list is empty at this point. */
+        page_list_move(list, &d->arch.relmem_list);
 
  out:
+    if ( is_pmem_list )
+        spin_unlock(&d->pmem_lock);
     spin_unlock_recursive(&d->page_alloc_lock);
     return ret;
 }
@@ -1922,12 +1930,28 @@ int domain_relinquish_resources(struct domain *d)
                 return ret;
         }
 
+#ifndef CONFIG_NVDIMM_PMEM
         d->arch.relmem = RELMEM_xen;
+#else
+        d->arch.relmem = RELMEM_pmem;
+#endif
 
         spin_lock(&d->page_alloc_lock);
         page_list_splice(&d->arch.relmem_list, &d->page_list);
         INIT_PAGE_LIST_HEAD(&d->arch.relmem_list);
         spin_unlock(&d->page_alloc_lock);
+
+#ifdef CONFIG_NVDIMM_PMEM
+        /* Fallthrough. Relinquish every page of PMEM. */
+    case RELMEM_pmem:
+        if ( is_hvm_domain(d) )
+        {
+            ret = relinquish_memory(d, &d->pmem_page_list, ~0UL);
+            if ( ret )
+                return ret;
+        }
+        d->arch.relmem = RELMEM_xen;
+#endif
 
         /* Fallthrough. Relinquish every page of memory. */
     case RELMEM_xen:

@@ -741,6 +741,16 @@ int pmem_populate(struct xen_pmem_map_args *args)
     return rc;
 }
 
+void pmem_page_cleanup(struct page_info *page)
+{
+    ASSERT(is_pmem_page(page));
+    ASSERT((page->count_info & PGC_count_mask) == 0);
+
+    page->count_info = PGC_pmem_page | PGC_state_free;
+    page_set_owner(page, NULL);
+    set_gpfn_from_mfn(page_to_mfn(page), INVALID_M2P_ENTRY);
+}
+
 int __init pmem_dom0_setup_permission(struct domain *d)
 {
     struct list_head *cur;
