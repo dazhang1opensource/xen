@@ -33,6 +33,20 @@ int pmem_arch_setup(unsigned long smfn, unsigned long emfn, unsigned int pxm,
                     unsigned long mgmt_smfn, unsigned long mgmt_emfn,
                     unsigned long *used_mgmt_mfns);
 
+struct xen_pmem_map_args {
+    struct domain *domain;
+
+    unsigned long mfn;     /* start MFN of pmems page to be mapped */
+    unsigned long gfn;     /* start GFN of target domain */
+    unsigned long nr_mfns; /* number of pmem pages to be mapped */
+
+    /* For preemption ... */
+    unsigned long nr_done; /* number of pmem pages processed so far */
+    int preempted;         /* Is the operation preempted? */
+};
+
+int pmem_populate(struct xen_pmem_map_args *args);
+
 #else /* !CONFIG_X86 */
 
 static inline int pmem_dom0_setup_permission(...)
@@ -41,6 +55,11 @@ static inline int pmem_dom0_setup_permission(...)
 }
 
 static inline int pmem_arch_setup(...)
+{
+    return -ENOSYS;
+}
+
+static inline int pmem_populate(...)
 {
     return -ENOSYS;
 }
