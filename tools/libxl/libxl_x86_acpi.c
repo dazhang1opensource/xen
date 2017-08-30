@@ -52,6 +52,15 @@ static unsigned long virt_to_phys(struct acpi_ctxt *ctxt, void *v)
             libxl_ctxt->alloc_base_paddr);
 }
 
+static void *phys_to_virt(struct acpi_ctxt *ctxt, unsigned long p)
+{
+    struct libxl_acpi_ctxt *libxl_ctxt =
+        CONTAINER_OF(ctxt, struct libxl_acpi_ctxt, c);
+
+    return (void *)((p - libxl_ctxt->alloc_base_paddr) +
+                    libxl_ctxt->alloc_base_vaddr);
+}
+
 static void *mem_alloc(struct acpi_ctxt *ctxt,
                        uint32_t size, uint32_t align)
 {
@@ -180,6 +189,7 @@ int libxl__dom_load_acpi(libxl__gc *gc,
 
     libxl_ctxt.c.mem_ops.alloc = mem_alloc;
     libxl_ctxt.c.mem_ops.v2p = virt_to_phys;
+    libxl_ctxt.c.mem_ops.p2v = phys_to_virt;
     libxl_ctxt.c.mem_ops.free = acpi_mem_free;
 
     rc = init_acpi_config(gc, dom, b_info, &config);
