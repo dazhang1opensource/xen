@@ -897,6 +897,29 @@ static int hvm_build_set_xs_values(libxl__gc *gc,
             goto err;
     }
 
+    if (dom->dm_acpi_seg.pages) {
+        uint64_t guest_addr_out = dom->dm_acpi_seg.pfn * XC_DOM_PAGE_SIZE(dom);
+
+        if (guest_addr_out >= 0x100000000ULL) {
+            LOG(ERROR,
+                "Guest address of DM ACPI is 0x%"PRIx64", but expected below 4G",
+                guest_addr_out);
+            goto err;
+        }
+
+        path = GCSPRINTF("/local/domain/%d/"HVM_XS_DM_ACPI_ADDRESS, domid);
+        ret = libxl__xs_printf(gc, XBT_NULL, path, "0x%"PRIx64, guest_addr_out);
+        if (ret)
+            goto err;
+
+        path = GCSPRINTF("/local/domain/%d/"HVM_XS_DM_ACPI_LENGTH, domid);
+        ret = libxl__xs_printf(gc, XBT_NULL, path, "0x%"PRIx64,
+                               (uint64_t)(dom->dm_acpi_seg.pages *
+                                          XC_DOM_PAGE_SIZE(dom)));
+        if (ret)
+            goto err;
+    }
+
     return 0;
 
 err:
@@ -1183,6 +1206,8 @@ int libxl__build_hvm(libxl__gc *gc, uint32_t domid,
         for (i = 0; i < dom->nr_vnodes; i++)
             dom->vnode_to_pnode[i] = info->vnuma_nodes[i].pnode;
     }
+
+    dom->dm_acpi_seg.pages = info->u.hvm.dm_acpi_pages;
 
     rc = libxl__build_dom(gc, domid, info, state, dom);
     if (rc != 0)

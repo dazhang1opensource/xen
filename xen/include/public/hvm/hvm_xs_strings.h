@@ -80,4 +80,12 @@
  */
 #define HVM_XS_OEM_STRINGS             "bios-strings/oem-%d"
 
+/* If a range of guest memory is reserved to pass ACPI from the device
+ * model (e.g. QEMU), the start address and the size of the reserved
+ * guest memory are specified by following two xenstore values.
+ */
+#define HVM_XS_DM_ACPI_ROOT            "hvmloader/dm-acpi"
+#define HVM_XS_DM_ACPI_ADDRESS         HVM_XS_DM_ACPI_ROOT"/address"
+#define HVM_XS_DM_ACPI_LENGTH          HVM_XS_DM_ACPI_ROOT"/length"
+
 #endif /* __XEN_PUBLIC_HVM_HVM_XS_STRINGS_H__ */

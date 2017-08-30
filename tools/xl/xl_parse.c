@@ -810,7 +810,7 @@ void parse_config_data(const char *config_source,
                        libxl_domain_config *d_config)
 {
     const char *buf;
-    long l, vcpus = 0;
+    long l, vcpus = 0, nr_dm_acpi_pages;
     XLU_Config *config;
     XLU_ConfigList *cpus, *vbds, *nics, *pcis, *cvfbs, *cpuids, *vtpms,
                    *usbctrls, *usbdevs, *p9devs;
@@ -1928,6 +1928,21 @@ skip_usbdev:
     parse_extra_args(_hvm);
 
 #undef parse_extra_args
+
+    if (b_info->type == LIBXL_DOMAIN_TYPE_HVM &&
+        b_info->device_model_version != LIBXL_DEVICE_MODEL_VERSION_NONE) {
+        /* parse 'dm_acpi_pages' */
+        e = xlu_cfg_get_long(config, "dm_acpi_pages", &nr_dm_acpi_pages, 0);
+        if (e && e != ESRCH) {
+            fprintf(stderr, "ERROR: unable to parse dm_acpi_pages.\n");
+            exit(-ERROR_FAIL);
+        }
+        if (!e && nr_dm_acpi_pages <= 0) {
+            fprintf(stderr, "ERROR: require positive dm_acpi_pages.\n");
+            exit(-ERROR_FAIL);
+        }
+        b_info->u.hvm.dm_acpi_pages = nr_dm_acpi_pages;
+    }
 
     /* If we've already got vfb=[] for PV guest then ignore top level
      * VNC config. */

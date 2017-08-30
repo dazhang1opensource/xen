@@ -674,6 +674,19 @@ static int alloc_magic_pages_hvm(struct xc_dom_image *dom)
                          ioreq_server_pfn(0));
         xc_hvm_param_set(xch, domid, HVM_PARAM_NR_IOREQ_SERVER_PAGES,
                          NR_IOREQ_SERVER_PAGES);
+
+        if ( dom->dm_acpi_seg.pages )
+        {
+            size_t acpi_size = dom->dm_acpi_seg.pages * XC_DOM_PAGE_SIZE(dom);
+
+            rc = xc_dom_alloc_segment(dom, &dom->dm_acpi_seg, "DM ACPI",
+                                      0, acpi_size);
+            if ( rc != 0 )
+            {
+                DOMPRINTF("Unable to reserve memory for DM ACPI");
+                goto out;
+            }
+        }
     }
 
     rc = xc_dom_alloc_segment(dom, &dom->start_info_seg,

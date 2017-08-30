@@ -93,6 +93,7 @@ struct xc_dom_image {
     struct xc_dom_seg pgtables_seg;
     struct xc_dom_seg devicetree_seg;
     struct xc_dom_seg start_info_seg; /* HVMlite only */
+    struct xc_dom_seg dm_acpi_seg;    /* reserved PFNs for DM ACPI */
     xen_pfn_t start_info_pfn;
     xen_pfn_t console_pfn;
     xen_pfn_t xenstore_pfn;
