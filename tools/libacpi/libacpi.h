@@ -93,6 +93,11 @@ struct acpi_config {
         uint32_t length;
     } pt;
 
+    struct {
+        uint32_t addr;
+        uint32_t length;
+    } dm;
+
     struct acpi_numa numa;
     const struct hvm_info_table *hvminfo;
 
