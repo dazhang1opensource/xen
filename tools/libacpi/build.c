@@ -56,6 +56,76 @@ struct acpi_info {
     uint64_t pci_hi_min, pci_hi_len; /* 24, 32 - PCI I/O hole boundaries */
 };
 
+/* ACPI tables of following signatures should not appear in DM ACPI */
+static uint64_t dm_acpi_signature_blacklist[64];
+/* ACPI namespace devices of following names should not appear in DM ACPI */
+static const char *dm_acpi_devname_blacklist[64];
+
+static int dm_acpi_blacklist_signature(struct acpi_config *config, uint64_t sig)
+{
+    unsigned int i, nr = ARRAY_SIZE(dm_acpi_signature_blacklist);
+
+    if ( !(config->table_flags & ACPI_HAS_DM) )
+        return 0;
+
+    for ( i = 0; i < nr; i++ )
+    {
+        uint64_t entry = dm_acpi_signature_blacklist[i];
+
+        if ( entry == sig )
+            return 0;
+        else if ( entry == 0 )
+            break;
+    }
+
+    if ( i >= nr )
+    {
+        config->table_flags &= ~ACPI_HAS_DM;
+
+        printf("ERROR: DM ACPI signature blacklist is full (size %u), "
+               "disable DM ACPI\n", nr);
+
+        return -ENOSPC;
+    }
+
+    dm_acpi_signature_blacklist[i] = sig;
+
+    return 0;
+}
+
+static int dm_acpi_blacklist_devname(struct acpi_config *config,
+                                     const char *devname)
+{
+    unsigned int i, nr = ARRAY_SIZE(dm_acpi_devname_blacklist);
+
+    if ( !(config->table_flags & ACPI_HAS_DM) )
+        return 0;
+
+    for ( i = 0; i < nr; i++ )
+    {
+        const char *entry = dm_acpi_devname_blacklist[i];
+
+        if ( !entry )
+            break;
+        if ( !strncmp(entry, devname, 4) )
+            return 0;
+    }
+
+    if ( i >= nr )
+    {
+        config->table_flags &= ~ACPI_HAS_DM;
+
+        printf("ERROR: DM ACPI devname blacklist is full (size %u), "
+               "disable loading DM ACPI\n", nr);
+
+        return -ENOSPC;
+    }
+
+    dm_acpi_devname_blacklist[i] = devname;
+
+    return 0;
+}
+
 static void set_checksum(
     void *table, uint32_t checksum_offset, uint32_t length)
 {
@@ -360,6 +430,7 @@ static int construct_secondary_tables(struct acpi_ctxt *ctxt,
         madt = construct_madt(ctxt, config, info);
         if (!madt) return -1;
         table_ptrs[nr_tables++] = ctxt->mem_ops.v2p(ctxt, madt);
+        dm_acpi_blacklist_signature(config, madt->header.signature);
     }
 
     /* HPET. */
@@ -368,6 +439,7 @@ static int construct_secondary_tables(struct acpi_ctxt *ctxt,
         hpet = construct_hpet(ctxt, config);
         if (!hpet) return -1;
         table_ptrs[nr_tables++] = ctxt->mem_ops.v2p(ctxt, hpet);
+        dm_acpi_blacklist_signature(config, hpet->header.signature);
     }
 
     /* WAET. */
@@ -377,6 +449,7 @@ static int construct_secondary_tables(struct acpi_ctxt *ctxt,
         if ( !waet )
             return -1;
         table_ptrs[nr_tables++] = ctxt->mem_ops.v2p(ctxt, waet);
+        dm_acpi_blacklist_signature(config, waet->header.signature);
     }
 
     if ( config->table_flags & ACPI_HAS_SSDT_PM )
@@ -385,6 +458,9 @@ static int construct_secondary_tables(struct acpi_ctxt *ctxt,
         if (!ssdt) return -1;
         memcpy(ssdt, ssdt_pm, sizeof(ssdt_pm));
         table_ptrs[nr_tables++] = ctxt->mem_ops.v2p(ctxt, ssdt);
+        dm_acpi_blacklist_devname(config, "AC");
+        dm_acpi_blacklist_devname(config, "BAT0");
+        dm_acpi_blacklist_devname(config, "BAT1");
     }
 
     if ( config->table_flags & ACPI_HAS_SSDT_S3 )
@@ -450,6 +526,8 @@ static int construct_secondary_tables(struct acpi_ctxt *ctxt,
                          offsetof(struct acpi_header, checksum),
                          tcpa->header.length);
         }
+        dm_acpi_blacklist_signature(config, tcpa->header.signature);
+        dm_acpi_blacklist_devname(config, "TPM");
     }
 
     /* SRAT and SLIT */
@@ -459,11 +537,17 @@ static int construct_secondary_tables(struct acpi_ctxt *ctxt,
         struct acpi_20_slit *slit = construct_slit(ctxt, config);
 
         if ( srat )
+        {
             table_ptrs[nr_tables++] = ctxt->mem_ops.v2p(ctxt, srat);
+            dm_acpi_blacklist_signature(config, srat->header.signature);
+        }
         else
             printf("Failed to build SRAT, skipping...\n");
         if ( slit )
+        {
             table_ptrs[nr_tables++] = ctxt->mem_ops.v2p(ctxt, slit);
+            dm_acpi_blacklist_signature(config, slit->header.signature);
+        }
         else
             printf("Failed to build SLIT, skipping...\n");
     }
@@ -543,6 +627,7 @@ int acpi_build_tables(struct acpi_ctxt *ctxt, struct acpi_config *config)
     facs = ctxt->mem_ops.alloc(ctxt, sizeof(struct acpi_20_facs), 16);
     if (!facs) goto oom;
     memcpy(facs, &Facs, sizeof(struct acpi_20_facs));
+    dm_acpi_blacklist_signature(config, facs->signature);
 
     /*
      * Alternative DSDTs we get linked against. A cover-all DSDT for up to the
@@ -564,6 +649,9 @@ int acpi_build_tables(struct acpi_ctxt *ctxt, struct acpi_config *config)
         if (!dsdt) goto oom;
         memcpy(dsdt, config->dsdt_anycpu, config->dsdt_anycpu_len);
     }
+    dm_acpi_blacklist_signature(config, ((struct acpi_header *)dsdt)->signature);
+    dm_acpi_blacklist_devname(config, "MEM0");
+    dm_acpi_blacklist_devname(config, "PCI0");
 
     /*
      * N.B. ACPI 1.0 operating systems may not handle FADT with revision 2
@@ -583,6 +671,7 @@ int acpi_build_tables(struct acpi_ctxt *ctxt, struct acpi_config *config)
     set_checksum(fadt_10,
                  offsetof(struct acpi_header, checksum),
                  sizeof(struct acpi_10_fadt));
+    dm_acpi_blacklist_signature(config, fadt_10->header.signature);
 
     switch ( config->acpi_revision )
     {
@@ -634,6 +723,7 @@ int acpi_build_tables(struct acpi_ctxt *ctxt, struct acpi_config *config)
         fadt->iapc_boot_arch |= ACPI_FADT_NO_CMOS_RTC;
     }
     set_checksum(fadt, offsetof(struct acpi_header, checksum), fadt_size);
+    dm_acpi_blacklist_signature(config, fadt->header.signature);
 
     nr_secondaries = construct_secondary_tables(ctxt, secondary_tables,
                  config, acpi_info);
@@ -652,6 +742,7 @@ int acpi_build_tables(struct acpi_ctxt *ctxt, struct acpi_config *config)
     set_checksum(xsdt,
                  offsetof(struct acpi_header, checksum),
                  xsdt->header.length);
+    dm_acpi_blacklist_signature(config, xsdt->header.signature);
 
     rsdt = ctxt->mem_ops.alloc(ctxt, sizeof(struct acpi_20_rsdt) +
                                sizeof(uint32_t) * nr_secondaries,
@@ -665,6 +756,7 @@ int acpi_build_tables(struct acpi_ctxt *ctxt, struct acpi_config *config)
     set_checksum(rsdt,
                  offsetof(struct acpi_header, checksum),
                  rsdt->header.length);
+    dm_acpi_blacklist_signature(config, rsdt->header.signature);
 
     /*
      * Fill in low-memory data structures: acpi_info and RSDP.
@@ -680,6 +772,7 @@ int acpi_build_tables(struct acpi_ctxt *ctxt, struct acpi_config *config)
     set_checksum(rsdp,
                  offsetof(struct acpi_20_rsdp, extended_checksum),
                  sizeof(struct acpi_20_rsdp));
+    dm_acpi_blacklist_signature(config, rsdp->signature);
 
     if ( !new_vm_gid(ctxt, config, acpi_info) )
         goto oom;
