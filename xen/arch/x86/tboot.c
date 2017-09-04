@@ -488,6 +488,10 @@ int __init tboot_parse_dmar_table(acpi_table_handler dmar_handler)
     /* but dom0 will read real table, so must zap it there too */
     acpi_dmar_zap();
 
+#ifdef CONFIG_NVDIMM_PMEM
+    acpi_nfit_zap();
+#endif
+
     return rc;
 }
 

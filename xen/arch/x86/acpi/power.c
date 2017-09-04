@@ -178,6 +178,10 @@ static int enter_state(u32 state)
 
     freeze_domains();
 
+#ifdef CONFIG_NVDIMM_PMEM
+    acpi_nfit_reinstate();
+#endif
+
     acpi_dmar_reinstate();
 
     if ( (error = disable_nonboot_cpus()) )
@@ -260,6 +264,9 @@ static int enter_state(u32 state)
     mtrr_aps_sync_end();
     adjust_vtd_irq_affinities();
     acpi_dmar_zap();
+#ifdef CONFIG_NVDIMM_PMEM
+    acpi_nfit_zap();
+#endif
     thaw_domains();
     system_state = SYS_STATE_active;
     spin_unlock(&pm_lock);
