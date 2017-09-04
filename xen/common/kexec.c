@@ -366,6 +366,9 @@ static int kexec_common_shutdown(void)
     watchdog_disable();
     console_start_sync();
     spin_debug_disable();
+#ifdef CONFIG_NVDIMM_PMEM
+    acpi_nfit_reinstate();
+#endif
     acpi_dmar_reinstate();
 
     return 0;

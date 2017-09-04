@@ -202,6 +202,24 @@ static void __init acpi_nfit_register_pmem(struct acpi_nfit_desc *desc)
     }
 }
 
+void acpi_nfit_zap(void)
+{
+    uint32_t sig = 0x4e494654; /* "TFIN" */
+
+    if ( nfit_desc.acpi_table )
+        write_atomic((uint32_t *)&nfit_desc.acpi_table->header.signature[0],
+                     sig);
+}
+
+void acpi_nfit_reinstate(void)
+{
+    uint32_t sig = 0x5449464e; /* "NFIT" */
+
+    if ( nfit_desc.acpi_table )
+        write_atomic((uint32_t *)&nfit_desc.acpi_table->header.signature[0],
+                     sig);
+}
+
 void __init acpi_nfit_boot_init(void)
 {
     acpi_status status;
@@ -216,6 +234,9 @@ void __init acpi_nfit_boot_init(void)
     map_pages_to_xen((unsigned long)nfit_desc.acpi_table, PFN_DOWN(nfit_addr),
                      PFN_UP(nfit_addr + nfit_len) - PFN_DOWN(nfit_addr),
                      PAGE_HYPERVISOR);
+
+    /* Hide NFIT from Dom0. */
+    acpi_nfit_zap();
 }
 
 void __init acpi_nfit_init(void)

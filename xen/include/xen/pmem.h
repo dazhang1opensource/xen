@@ -24,5 +24,18 @@
 
 int pmem_register(unsigned long smfn, unsigned long emfn, unsigned int pxm);
 
+#ifdef CONFIG_X86
+
+int pmem_dom0_setup_permission(struct domain *d);
+
+#else /* !CONFIG_X86 */
+
+static inline int pmem_dom0_setup_permission(...)
+{
+    return -ENOSYS;
+}
+
+#endif /* CONFIG_X86 */
+
 #endif /* CONFIG_NVDIMM_PMEM */
 #endif /* __XEN_PMEM_H__ */

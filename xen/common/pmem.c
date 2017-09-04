@@ -18,6 +18,8 @@
 
 #include <xen/errno.h>
 #include <xen/list.h>
+#include <xen/iocap.h>
+#include <xen/paging.h>
 #include <xen/pmem.h>
 
 /*
@@ -120,3 +122,22 @@ int pmem_register(unsigned long smfn, unsigned long emfn, unsigned int pxm)
 
     return rc;
 }
+
+#ifdef CONFIG_X86
+
+int __init pmem_dom0_setup_permission(struct domain *d)
+{
+    struct list_head *cur;
+    struct pmem *pmem;
+    int rc = 0;
+
+    list_for_each(cur, &pmem_raw_regions)
+    {
+        pmem = list_entry(cur, struct pmem, link);
+        rc |= iomem_deny_access(d, pmem->smfn, pmem->emfn - 1);
+    }
+
+    return rc;
+}
+
+#endif /* CONFIG_X86 */
