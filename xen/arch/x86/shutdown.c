@@ -581,6 +581,9 @@ void machine_restart(unsigned int delay_millisecs)
 
     if ( tboot_in_measured_env() )
     {
+#ifdef CONFIG_NVDIMM_PMEM
+        acpi_nfit_reinstate();
+#endif
         acpi_dmar_reinstate();
         tboot_shutdown(TB_SHUTDOWN_REBOOT);
     }
