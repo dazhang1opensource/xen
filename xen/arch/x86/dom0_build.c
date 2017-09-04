@@ -8,6 +8,7 @@
 #include <xen/iocap.h>
 #include <xen/libelf.h>
 #include <xen/pfn.h>
+#include <xen/pmem.h>
 #include <xen/sched.h>
 #include <xen/sched-if.h>
 #include <xen/softirq.h>
@@ -451,6 +452,10 @@ int __init dom0_setup_permissions(struct domain *d)
         else if ( ro_hpet )
             rc |= rangeset_add_singleton(mmio_ro_ranges, mfn);
     }
+
+#ifdef CONFIG_NVDIMM_PMEM
+    rc |= pmem_dom0_setup_permission(d);
+#endif
 
     return rc;
 }
