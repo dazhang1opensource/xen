@@ -1116,6 +1116,39 @@ FIFO-based event channel ABI support up to 131,071 event channels.
 Other guests are limited to 4095 (64-bit x86 and ARM) or 1023 (32-bit
 x86).
 
+=item B<vnvdimms=[ 'VNVDIMM_SPEC', 'VNVDIMM_SPEC', ... ]>
+
+Specifies the virtual NVDIMM devices which are provided to the guest.
+
+Each B<VNVDIMM_SPEC> is a comma-separated list of C<KEY=VALUE> settings
+from the following list:
+
+=over 4
+
+=item B<type=TYPE>
+
+Specifies the type of host backend of the virtual NVDIMM device. Following
+is a list of supported types:
+
+=over 4
+
+=item B<mfn>
+
+backs the virtual NVDIMM device by a contiguous host PMEM region.
+
+=back
+
+=item B<backend=BACKEND>
+
+Specifies the host backend of the virtual NVDIMM device. If C<type=mfn>,
+then B<BACKEND> specifies the start MFN of the host PMEM region.
+
+=item B<nr_pages=NUMBER>
+
+Specifies the number of pages of the host backend.
+
+=back
+
 =back
 
 =head2 Paravirtualised (PV) Guest Specific Options

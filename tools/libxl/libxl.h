@@ -1474,6 +1474,11 @@ int libxl_get_memory_target_0x040700(libxl_ctx *ctx, uint32_t domid,
                                      uint32_t *out_target)
     LIBXL_EXTERNAL_CALLERS_ONLY;
 
+int libxl_vnvdimm_copy_config(libxl_ctx *ctx,
+                              libxl_domain_config *dst,
+                              const libxl_domain_config *src)
+                              LIBXL_EXTERNAL_CALLERS_ONLY;
+
 /*
  * WARNING
  * This memory management API is unstable even in Xen 4.2.
