@@ -935,6 +935,58 @@ static char *qemu_disk_ide_drive_string(libxl__gc *gc, const char *target_path,
     return drive;
 }
 
+#if defined(__linux__)
+
+static uint64_t libxl__build_dm_vnvdimm_args(
+    libxl__gc *gc, flexarray_t *dm_args,
+    struct libxl_device_vnvdimm *dev, int dev_no)
+{
+    uint64_t addr = 0, size = 0;
+    char *arg;
+
+    switch (dev->backend_type)
+    {
+    case LIBXL_VNVDIMM_BACKEND_TYPE_MFN:
+        addr = dev->u.mfn << XC_PAGE_SHIFT;
+        size = dev->nr_pages << XC_PAGE_SHIFT;
+        break;
+    }
+
+    if (!size)
+        return 0;
+
+    flexarray_append(dm_args, "-object");
+    arg = GCSPRINTF("memory-backend-xen,id=mem%d,host-addr=%"PRIu64",size=%"PRIu64,
+                    dev_no + 1, addr, size);
+    flexarray_append(dm_args, arg);
+
+    flexarray_append(dm_args, "-device");
+    arg = GCSPRINTF("nvdimm,id=xen_nvdimm%d,memdev=mem%d",
+                    dev_no + 1, dev_no + 1);
+    flexarray_append(dm_args, arg);
+
+    return size;
+}
+
+static uint64_t libxl__build_dm_vnvdimms_args(
+    libxl__gc *gc, flexarray_t *dm_args,
+    struct libxl_device_vnvdimm *vnvdimms, int num_vnvdimms)
+{
+    uint64_t total_size = 0, size;
+    unsigned int i;
+
+    for (i = 0; i < num_vnvdimms; i++) {
+        size = libxl__build_dm_vnvdimm_args(gc, dm_args, &vnvdimms[i], i);
+        if (!size)
+            break;
+        total_size += size;
+    }
+
+    return total_size;
+}
+
+#endif /* __linux__ */
+
 static int libxl__build_device_model_args_new(libxl__gc *gc,
                                         const char *dm, int guest_domid,
                                         const libxl_domain_config *guest_config,
@@ -948,13 +1000,18 @@ static int libxl__build_device_model_args_new(libxl__gc *gc,
     const libxl_device_nic *nics = guest_config->nics;
     const int num_disks = guest_config->num_disks;
     const int num_nics = guest_config->num_nics;
+#if defined(__linux__)
+    const int num_vnvdimms = guest_config->num_vnvdimms;
+#else
+    const int num_vnvdimms = 0;
+#endif
     const libxl_vnc_info *vnc = libxl__dm_vnc(guest_config);
     const libxl_sdl_info *sdl = dm_sdl(guest_config);
     const char *keymap = dm_keymap(guest_config);
     char *machinearg;
     flexarray_t *dm_args, *dm_envs;
     int i, connection, devid, ret;
-    uint64_t ram_size;
+    uint64_t ram_size, ram_size_in_byte = 0, vnvdimms_size = 0;
     const char *path, *chardev;
     char *user = NULL;
     struct passwd *user_base, user_pwbuf;
@@ -1481,6 +1538,9 @@ static int libxl__build_device_model_args_new(libxl__gc *gc,
             }
         }
 
+        if (num_vnvdimms)
+            machinearg = libxl__sprintf(gc, "%s,nvdimm", machinearg);
+
         flexarray_append(dm_args, machinearg);
         for (i = 0; b_info->extra_hvm && b_info->extra_hvm[i] != NULL; i++)
             flexarray_append(dm_args, b_info->extra_hvm[i]);
@@ -1490,8 +1550,25 @@ static int libxl__build_device_model_args_new(libxl__gc *gc,
     }
 
     ram_size = libxl__sizekb_to_mb(b_info->max_memkb - b_info->video_memkb);
+    if (num_vnvdimms) {
+        ram_size_in_byte = ram_size << 20;
+        vnvdimms_size = libxl__build_dm_vnvdimms_args(gc, dm_args,
+                                                      guest_config->vnvdimms,
+                                                      num_vnvdimms);
+        if (ram_size_in_byte + vnvdimms_size < ram_size_in_byte) {
+            LOG(ERROR,
+                "total size of RAM (%"PRIu64") and NVDIMM (%"PRIu64") overflow",
+                ram_size_in_byte, vnvdimms_size);
+            return ERROR_INVAL;
+        }
+    }
     flexarray_append(dm_args, "-m");
-    flexarray_append(dm_args, GCSPRINTF("%"PRId64, ram_size));
+    flexarray_append(dm_args,
+                     vnvdimms_size ?
+                     GCSPRINTF("%"PRId64",slots=%d,maxmem=%"PRId64,
+                               ram_size, num_vnvdimms + 1,
+                               ROUNDUP(ram_size_in_byte, 12) + vnvdimms_size) :
+                     GCSPRINTF("%"PRId64, ram_size));
 
     if (b_info->type == LIBXL_DOMAIN_TYPE_HVM) {
         if (b_info->u.hvm.hdtype == LIBXL_HDTYPE_AHCI)
