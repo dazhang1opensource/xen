@@ -1175,11 +1175,12 @@ int libxl__qmp_initializations(libxl__gc *gc, uint32_t domid,
 {
     const libxl_vnc_info *vnc = libxl__dm_vnc(guest_config);
     libxl__qmp_handler *qmp = NULL;
-    int ret = 0;
+    bool ignore_error = true;
+    int ret = -1;
 
     qmp = libxl__qmp_initialize(gc, domid);
     if (!qmp)
-        return -1;
+        goto out;
     ret = libxl__qmp_query_serial(qmp);
     if (!ret && vnc && vnc->passwd) {
         ret = qmp_change(gc, qmp, "vnc", "password", vnc->passwd);
@@ -1189,7 +1190,9 @@ int libxl__qmp_initializations(libxl__gc *gc, uint32_t domid,
         ret = qmp_query_vnc(qmp);
     }
     libxl__qmp_close(qmp);
-    return ret;
+
+ out:
+    return ret ? (ignore_error ? ERROR_FAIL : ERROR_BADFAIL) : 0;
 }
 
 /*
