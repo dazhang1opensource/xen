@@ -26,6 +26,7 @@
 
 #include "_libxl_list.h"
 #include "libxl_internal.h"
+#include "libxl_vnvdimm.h"
 
 /* #define DEBUG_RECEIVED */
 
@@ -1170,6 +1171,127 @@ int libxl_qemu_monitor_command(libxl_ctx *ctx, uint32_t domid,
     return rc;
 }
 
+#if defined(__linux__)
+
+static int qmp_register_vnvdimm_callback(libxl__qmp_handler *qmp,
+                                         const libxl__json_object *o,
+                                         void *arg)
+{
+    GC_INIT(qmp->ctx);
+    const libxl_domain_config *guest_config = arg;
+    const libxl_device_vnvdimm *vnvdimm;
+    const libxl__json_object *obj, *sub_map, *sub_obj;
+    const char *id, *expected_id;
+    unsigned int i, slot;
+    unsigned long gpa, size, mfn, gpfn, nr_pages;
+    int rc = 0;
+
+    for (i = 0; (obj = libxl__json_array_get(o, i)); i++) {
+        if (!libxl__json_object_is_map(obj))
+            continue;
+
+        sub_map = libxl__json_map_get("data", obj, JSON_MAP);
+        if (!sub_map)
+            continue;
+
+        sub_obj = libxl__json_map_get("slot", sub_map, JSON_INTEGER);
+        slot = libxl__json_object_get_integer(sub_obj);
+        if (slot > guest_config->num_vnvdimms) {
+            LOG(ERROR,
+                "Invalid QEMU memory device slot %u, expecting less than %u",
+                slot, guest_config->num_vnvdimms);
+            rc = -ERROR_INVAL;
+            goto out;
+        }
+        vnvdimm = &guest_config->vnvdimms[slot];
+
+        /*
+         * Double check whether it's a NVDIMM memory device, through
+         * all memory devices in QEMU on Xen are for vNVDIMM.
+         */
+        expected_id = libxl__sprintf(gc, "xen_nvdimm%u", slot + 1);
+        if (!expected_id) {
+            LOG(ERROR, "Cannot build device id");
+            rc = -ERROR_FAIL;
+            goto out;
+        }
+        sub_obj = libxl__json_map_get("id", sub_map, JSON_STRING);
+        id = libxl__json_object_get_string(sub_obj);
+        if (!id || strncmp(id, expected_id, strlen(expected_id))) {
+            LOG(ERROR,
+                "Invalid QEMU memory device id %s, expecting %s",
+                id, expected_id);
+            rc = -ERROR_FAIL;
+            goto out;
+        }
+
+        sub_obj = libxl__json_map_get("addr", sub_map, JSON_INTEGER);
+        gpa = libxl__json_object_get_integer(sub_obj);
+        sub_obj = libxl__json_map_get("size", sub_map, JSON_INTEGER);
+        size = libxl__json_object_get_integer(sub_obj);
+        if ((gpa | size) & ~XC_PAGE_MASK) {
+            LOG(ERROR,
+                "Invalid address 0x%lx or size 0x%lx of QEMU memory device %s, "
+                "not aligned to 0x%lx",
+                gpa, size, id, XC_PAGE_SIZE);
+            rc = -ERROR_INVAL;
+            goto out;
+        }
+        gpfn = gpa >> XC_PAGE_SHIFT;
+
+        nr_pages = size >> XC_PAGE_SHIFT;
+        if (nr_pages > vnvdimm->nr_pages) {
+            LOG(ERROR,
+                "Invalid size 0x%lx of QEMU memory device %s, "
+                "expecting no larger than 0x%lx",
+                size, id, vnvdimm->nr_pages << XC_PAGE_SHIFT);
+            rc = -ERROR_INVAL;
+            goto out;
+        }
+
+        switch (vnvdimm->backend_type) {
+        case LIBXL_VNVDIMM_BACKEND_TYPE_MFN:
+            mfn = vnvdimm->u.mfn;
+            break;
+
+        default:
+            LOG(ERROR, "Invalid NVDIMM backend type %u", vnvdimm->backend_type);
+            rc = -ERROR_INVAL;
+            goto out;
+        }
+
+        rc = libxl_vnvdimm_add_pages(gc, qmp->domid, mfn, gpfn, nr_pages);
+        if (rc) {
+            LOG(ERROR,
+                "Cannot map PMEM pages for QEMU memory device %s, "
+                "mfn 0x%lx, gpfn 0x%lx, nr 0x%lx, rc %d",
+                id, mfn, gpfn, nr_pages, rc);
+            rc = -ERROR_FAIL;
+            goto out;
+        }
+    }
+
+ out:
+    GC_FREE;
+    return rc;
+}
+
+static int libxl__qmp_query_vnvdimms(libxl__qmp_handler *qmp,
+                                     const libxl_domain_config *guest_config)
+{
+    int rc;
+    GC_INIT(qmp->ctx);
+
+    rc = qmp_synchronous_send(qmp, "query-memory-devices", NULL,
+                              qmp_register_vnvdimm_callback,
+                              (void *)guest_config, qmp->timeout);
+
+    GC_FREE;
+    return rc;
+}
+
+#endif /* __linux__ */
+
 int libxl__qmp_initializations(libxl__gc *gc, uint32_t domid,
                                const libxl_domain_config *guest_config)
 {
@@ -1189,6 +1311,14 @@ int libxl__qmp_initializations(libxl__gc *gc, uint32_t domid,
     if (!ret) {
         ret = qmp_query_vnc(qmp);
     }
+
+#if defined(__linux__)
+    if (!ret && guest_config->num_vnvdimms) {
+        ignore_error = false;
+        ret = libxl__qmp_query_vnvdimms(qmp, guest_config);
+    }
+#endif /* __linux__ */
+
     libxl__qmp_close(qmp);
 
  out:
