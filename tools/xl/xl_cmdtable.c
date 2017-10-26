@@ -622,6 +622,12 @@ struct cmd_spec cmd_table[] = {
       "[options]",
       "-r, --raw   List PMEM regions detected by Xen hypervisor\n"
     },
+    { "pmem-setup",
+      &main_pmem_setup, 0, 1,
+      "Setup a PMEM region for specified usage purpose",
+      "[options]",
+      "-m, --mgmt <smfn> <emfn>  Set PMEM pages smfn - emfn for management usage\n"
+    },
 };
 
 int cmdtable_len = sizeof(cmd_table)/sizeof(struct cmd_spec);
