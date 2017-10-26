@@ -1067,3 +1067,19 @@ libxl_psr_hw_info = Struct("psr_hw_info", [
                                ])),
           ]))
     ], dir=DIR_OUT)
+
+libxl_nvdimm_pmem_region_type = Enumeration("nvdimm_pmem_region_type", [
+    (0, "RAW"),
+    ])
+
+libxl_nvdimm_pmem_raw_region = Struct("nvdimm_pmem_raw_region", [
+    ("smfn", uint64),
+    ("emfn", uint64),
+    ("pxm", uint32),
+    ])
+
+libxl_nvdimm_pmem_region = Struct("nvdimm_pmem_region", [
+    ("u", KeyedUnion(None, libxl_nvdimm_pmem_region_type, "type",
+                     [("raw", libxl_nvdimm_pmem_raw_region),
+                     ])),
+    ])

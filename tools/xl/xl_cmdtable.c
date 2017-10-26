@@ -628,6 +628,12 @@ struct cmd_spec cmd_table[] = {
       "Issue a qemu monitor command to the device model of a domain",
       "<Domain> <Command>",
     },
+    { "pmem-list",
+      &main_pmem_list, 0, 0,
+      "List PMEM regions of specified types, or all PMEM regions if no type is specified",
+      "[options]",
+      "-r, --raw   List PMEM regions detected by Xen hypervisor\n"
+    },
 };
 
 int cmdtable_len = sizeof(cmd_table)/sizeof(struct cmd_spec);
