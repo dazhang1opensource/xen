@@ -136,3 +136,14 @@ int libxl_nvdimm_pmem_get_regions(libxl_ctx *ctx,
 
     return rc;
 }
+
+int libxl_nvdimm_pmem_setup_mgmt(libxl_ctx *ctx,
+                                 unsigned long smfn, unsigned long emfn)
+{
+    int rc = xc_nvdimm_pmem_setup_mgmt(ctx->xch, smfn, emfn);
+
+    if (rc)
+        errno = -rc;
+
+    return rc ? ERROR_FAIL : 0;
+}

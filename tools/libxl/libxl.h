@@ -2369,6 +2369,19 @@ int libxl_nvdimm_pmem_get_regions(libxl_ctx *ctx,
                                   libxl_nvdimm_pmem_region **regions_r,
                                   unsigned int *nr_r);
 
+/*
+ * Setup the specified PMEM region for management usage.
+ *
+ * Parameters:
+ *  ctx:        libxl context
+ *  smfn, emfn: start and end MFN's of the PMEM region
+ *
+ * Return:
+ *  0 on success; otherwise, ERROR_*, and leave errno valid.
+ */
+int libxl_nvdimm_pmem_setup_mgmt(libxl_ctx *ctx,
+                                 unsigned long smfn, unsigned long emfn);
+
 /* misc */
 
 /* Each of these sets or clears the flag according to whether the

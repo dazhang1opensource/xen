@@ -24,8 +24,10 @@
 #include <string.h>
 
 #include <libxl.h>
+#include <libxlutil.h>
 
 #include "xl.h"
+#include "xl_parse.h"
 #include "xl_utils.h"
 
 typedef void (*show_region_fn_t)(libxl_nvdimm_pmem_region *region,
@@ -89,4 +91,53 @@ int main_pmem_list(int argc, char **argv)
         ret = list_regions(LIBXL_NVDIMM_PMEM_REGION_TYPE_RAW);
 
     return ret;
+}
+
+int main_pmem_setup(int argc, char **argv)
+{
+    static struct option opts[] = {
+        { "mgmt", 1, 0, 'm' },
+        COMMON_LONG_OPTS
+    };
+
+    bool mgmt = false;
+    unsigned long mgmt_smfn, mgmt_emfn;
+    int opt, rc = 0;
+
+#define CHECK_NR_ARGS(expected, option)                                 \
+    do {                                                                \
+        if (argc + 1 != optind + (expected)) {                          \
+            fprintf(stderr,                                             \
+                    "Error: 'xl pmem-setup %s' requires %u arguments\n\n", \
+                    (option), (expected));                              \
+            help("pmem-setup");                                         \
+                                                                        \
+            rc = ERROR_INVAL;                                           \
+            errno = EINVAL;                                             \
+                                                                        \
+            goto out;                                                   \
+        }                                                               \
+    } while (0)
+
+    SWITCH_FOREACH_OPT(opt, "m:", opts, "pmem-setup", 0) {
+    case 'm':
+        CHECK_NR_ARGS(2, "-m");
+
+        mgmt = true;
+        mgmt_smfn = parse_ulong(optarg);
+        mgmt_emfn = parse_ulong(argv[optind]);
+
+        break;
+    }
+
+#undef CHECK_NR_ARGS
+
+    if (mgmt)
+        rc = libxl_nvdimm_pmem_setup_mgmt(ctx, mgmt_smfn, mgmt_emfn);
+
+ out:
+    if (rc)
+        fprintf(stderr, "Error: pmem-setup failed, %s\n", strerror(errno));
+
+    return rc;
 }
