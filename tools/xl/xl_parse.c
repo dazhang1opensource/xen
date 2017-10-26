@@ -387,7 +387,7 @@ static unsigned long parse_ulong(const char *str)
     char *endptr;
     unsigned long val;
 
-    val = strtoul(str, &endptr, 10);
+    val = strtoul(str, &endptr, 0);
     if (endptr == str || val == ULONG_MAX) {
         fprintf(stderr, "xl: failed to convert \"%s\" to number\n", str);
         exit(EXIT_FAILURE);
