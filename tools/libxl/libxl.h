@@ -2304,6 +2304,26 @@ int libxl_psr_cat_get_l3_info(libxl_ctx *ctx, libxl_psr_cat_info **info,
 void libxl_psr_cat_info_list_free(libxl_psr_cat_info *list, int nr);
 #endif
 
+/* NVDIMM */
+
+/*
+ * Get a list of information of PMEM regions of the specified type.
+ *
+ * Parameters:
+ *  ctx:       libxl contenxt
+ *  type:      type of the PMEM regions
+ *  regions_r: return the information list (one entry per region) on success;
+ *             the list is dynamically allocated and shall be freed by callers
+ *  nr_r:      return the number of entries in regions_r on success
+ *
+ * Return:
+ *  0 on success; otherwise, ERROR_*, and leave errno valid.
+ */
+int libxl_nvdimm_pmem_get_regions(libxl_ctx *ctx,
+                                  libxl_nvdimm_pmem_region_type type,
+                                  libxl_nvdimm_pmem_region **regions_r,
+                                  unsigned int *nr_r);
+
 /* misc */
 
 /* Each of these sets or clears the flag according to whether the

@@ -210,6 +210,7 @@ int main_psr_cat_cbm_set(int argc, char **argv);
 int main_psr_cat_show(int argc, char **argv);
 #endif
 int main_qemu_monitor_command(int argc, char **argv);
+int main_pmem_list(int argc, char **argv);
 
 void help(const char *command);
 
