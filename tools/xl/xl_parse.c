@@ -382,7 +382,7 @@ static void parse_vcpu_affinity(libxl_domain_build_info *b_info,
     }
 }
 
-static unsigned long parse_ulong(const char *str)
+unsigned long parse_ulong(const char *str)
 {
     char *endptr;
     unsigned long val;

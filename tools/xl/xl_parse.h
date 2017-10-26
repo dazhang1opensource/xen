@@ -21,6 +21,7 @@ void parse_config_data(const char *config_source,
                        const char *config_data,
                        int config_len,
                        libxl_domain_config *d_config);
+unsigned long parse_ulong(const char *str);
 int parse_range(const char *str, unsigned long *a, unsigned long *b);
 int64_t parse_mem_size_kb(const char *mem);
 void parse_disk_config(XLU_Config **config, const char *spec,
