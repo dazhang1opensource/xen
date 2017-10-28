@@ -41,8 +41,17 @@ static void show_raw_region(libxl_nvdimm_pmem_region *region, unsigned int idx)
            idx, raw->smfn, raw->emfn, raw->pxm);
 }
 
+static void show_mgmt_region(libxl_nvdimm_pmem_region *region, unsigned int idx)
+{
+    libxl_nvdimm_pmem_mgmt_region *mgmt = &region->u.mgmt;
+
+    printf(" %u: mfn 0x%lx - 0x%lx, used 0x%lx pages\n",
+           idx, mgmt->smfn, mgmt->emfn, mgmt->used);
+}
+
 static show_region_fn_t show_region_fn[] = {
     [LIBXL_NVDIMM_PMEM_REGION_TYPE_RAW] = show_raw_region,
+    [LIBXL_NVDIMM_PMEM_REGION_TYPE_MGMT] = show_mgmt_region,
 };
 
 static int list_regions(libxl_nvdimm_pmem_region_type type)
@@ -74,21 +83,30 @@ int main_pmem_list(int argc, char **argv)
 {
     static struct option opts[] = {
         { "raw", 0, 0, 'r' },
+        { "mgmt", 0, 0, 'm' },
         COMMON_LONG_OPTS
     };
 
-    bool all = true, raw = false;
+    bool all = true, raw = false, mgmt = false;
     int opt, ret = 0;
 
-    SWITCH_FOREACH_OPT(opt, "r", opts, "pmem-list", 0) {
+    SWITCH_FOREACH_OPT(opt, "rm", opts, "pmem-list", 0) {
     case 'r':
         all = false;
         raw = true;
+        break;
+
+    case 'm':
+        all = false;
+        mgmt = true;
         break;
     }
 
     if (all || raw)
         ret = list_regions(LIBXL_NVDIMM_PMEM_REGION_TYPE_RAW);
+
+    if (!ret && (all || mgmt))
+        ret = list_regions(LIBXL_NVDIMM_PMEM_REGION_TYPE_MGMT);
 
     return ret;
 }
