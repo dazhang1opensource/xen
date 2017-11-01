@@ -2337,6 +2337,23 @@ int libxl_nvdimm_pmem_get_regions(libxl_ctx *ctx,
 int libxl_nvdimm_pmem_setup_mgmt(libxl_ctx *ctx,
                                  unsigned long smfn, unsigned long emfn);
 
+/*
+ * Setup the specified PMEM region for guest data usage.
+ *
+ * Parameters:
+ *  ctx:              libxl context
+ *  data_{smfn,emfn}: start and end MFNs of the data PMEM region
+ *  mgmt_{smfn,emfn}: start and end MFNs of the management PMEM region used to
+ *                    manage the above data PMEM region; it cannot overlap with
+ *                    the above data PMEM region
+ *
+ * Return:
+ *  0 on success; otherwise, ERROR_*, and leave errno valid.
+ */
+int libxl_nvdimm_pmem_setup_data(libxl_ctx *ctx,
+                                 unsigned long data_smfn, unsigned data_emfn,
+                                 unsigned long mgmt_smfn, unsigned mgmt_emfn);
+
 /* misc */
 
 /* Each of these sets or clears the flag according to whether the

@@ -151,3 +151,16 @@ int libxl_nvdimm_pmem_setup_mgmt(libxl_ctx *ctx,
 
     return errno ? ERROR_FAIL : 0;
 }
+
+int libxl_nvdimm_pmem_setup_data(libxl_ctx *ctx,
+                                 unsigned long data_smfn, unsigned data_emfn,
+                                 unsigned long mgmt_smfn, unsigned mgmt_emfn)
+{
+    int rc = xc_nvdimm_pmem_setup_data(ctx->xch, data_smfn, data_emfn,
+                                       mgmt_smfn, mgmt_emfn);
+
+    if (rc)
+        errno = -rc;
+
+    return errno ? ERROR_FAIL : 0;
+}
