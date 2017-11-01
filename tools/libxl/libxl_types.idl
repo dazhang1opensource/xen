@@ -1071,6 +1071,7 @@ libxl_psr_hw_info = Struct("psr_hw_info", [
 libxl_nvdimm_pmem_region_type = Enumeration("nvdimm_pmem_region_type", [
     (0, "RAW"),
     (1, "MGMT"),
+    (2, "DATA")
     ])
 
 libxl_nvdimm_pmem_raw_region = Struct("nvdimm_pmem_raw_region", [
@@ -1085,9 +1086,17 @@ libxl_nvdimm_pmem_mgmt_region = Struct("nvdimm_pmem_mgmt_region", [
     ("used", uint64),
     ])
 
+libxl_nvdimm_pmem_data_region = Struct("nvdimm_pmem_data_region", [
+    ("smfn", uint64),
+    ("emfn", uint64),
+    ("mgmt_smfn", uint64),
+    ("mgmt_emfn", uint64),
+    ])
+
 libxl_nvdimm_pmem_region = Struct("nvdimm_pmem_region", [
     ("u", KeyedUnion(None, libxl_nvdimm_pmem_region_type, "type",
                      [("raw", libxl_nvdimm_pmem_raw_region),
                       ("mgmt", libxl_nvdimm_pmem_mgmt_region),
+                      ("data", libxl_nvdimm_pmem_data_region),
                      ])),
     ])

@@ -634,6 +634,7 @@ struct cmd_spec cmd_table[] = {
       "[options]",
       "-r, --raw   List PMEM regions detected by Xen hypervisor\n"
       "-m, --mgmt  List PMEM regions used fro management\n"
+      "-d, --data  List PMEM regions used for guest data\n"
     },
     { "pmem-setup",
       &main_pmem_setup, 0, 1,

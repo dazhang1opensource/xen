@@ -32,6 +32,7 @@
 static size_t xc_pmem_region_struct_size[] = {
     [LIBXL_NVDIMM_PMEM_REGION_TYPE_RAW] = sizeof(libxl_nvdimm_pmem_raw_region),
     [LIBXL_NVDIMM_PMEM_REGION_TYPE_MGMT] = sizeof(libxl_nvdimm_pmem_mgmt_region),
+    [LIBXL_NVDIMM_PMEM_REGION_TYPE_DATA] = sizeof(libxl_nvdimm_pmem_data_region),
 };
 
 static int get_xc_region_type(libxl_nvdimm_pmem_region_type type,
@@ -40,6 +41,7 @@ static int get_xc_region_type(libxl_nvdimm_pmem_region_type type,
     static uint8_t xc_region_types[] = {
         [LIBXL_NVDIMM_PMEM_REGION_TYPE_RAW] = PMEM_REGION_TYPE_RAW,
         [LIBXL_NVDIMM_PMEM_REGION_TYPE_MGMT] = PMEM_REGION_TYPE_MGMT,
+        [LIBXL_NVDIMM_PMEM_REGION_TYPE_DATA] = PMEM_REGION_TYPE_DATA,
     };
     static unsigned int nr_types =
         sizeof(xc_region_types) / sizeof(xc_region_types[0]);
@@ -66,6 +68,8 @@ static void copy_from_xc_regions(libxl_nvdimm_pmem_region *tgt_regions,
                  sizeof(xen_sysctl_nvdimm_pmem_raw_region_t));
     BUILD_BUG_ON(sizeof(libxl_nvdimm_pmem_mgmt_region) !=
                  sizeof(xen_sysctl_nvdimm_pmem_mgmt_region_t));
+    BUILD_BUG_ON(sizeof(libxl_nvdimm_pmem_data_region) !=
+                 sizeof(xen_sysctl_nvdimm_pmem_data_region_t));
 
     while (tgt < end) {
         memcpy((void *)tgt + offset, src, size);
