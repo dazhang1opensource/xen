@@ -118,8 +118,8 @@ int main_pmem_setup(int argc, char **argv)
         COMMON_LONG_OPTS
     };
 
-    bool mgmt = false;
-    unsigned long mgmt_smfn, mgmt_emfn;
+    bool mgmt = false, data = false;
+    unsigned long mgmt_smfn, mgmt_emfn, data_smfn, data_emfn;
     int opt, rc = 0;
 
 #define CHECK_NR_ARGS(expected, option)                                 \
@@ -137,7 +137,7 @@ int main_pmem_setup(int argc, char **argv)
         }                                                               \
     } while (0)
 
-    SWITCH_FOREACH_OPT(opt, "m:", opts, "pmem-setup", 0) {
+    SWITCH_FOREACH_OPT(opt, "m:d:", opts, "pmem-setup", 0) {
     case 'm':
         CHECK_NR_ARGS(2, "-m");
 
@@ -146,12 +146,38 @@ int main_pmem_setup(int argc, char **argv)
         mgmt_emfn = parse_ulong(argv[optind]);
 
         break;
+
+    case 'd':
+        CHECK_NR_ARGS(4, "-d");
+
+        data = true;
+        data_smfn = parse_ulong(optarg);
+        data_emfn = parse_ulong(argv[optind]);
+        mgmt_smfn = parse_ulong(argv[optind + 1]);
+        mgmt_emfn = parse_ulong(argv[optind + 2]);
+
+        break;
     }
 
 #undef CHECK_NR_ARGS
 
+    if (mgmt && data) {
+        fprintf(stderr,
+                "Error: '-m' and '-d' cannot be used simultaneously\n\n");
+        help("pmem-setup");
+
+        rc = ERROR_INVAL;
+        errno = EINVAL;
+
+        goto out;
+    }
+
     if (mgmt)
         rc = libxl_nvdimm_pmem_setup_mgmt(ctx, mgmt_smfn, mgmt_emfn);
+
+    if (data)
+        rc = libxl_nvdimm_pmem_setup_data(ctx, data_smfn, data_emfn,
+                                          mgmt_smfn, mgmt_emfn);
 
  out:
     if (rc)
