@@ -640,6 +640,11 @@ struct cmd_spec cmd_table[] = {
       "Setup a PMEM region for specified usage purpose",
       "[options]",
       "-m, --mgmt <smfn> <emfn>  Set PMEM pages smfn - emfn for management usage\n"
+      "-d, --data <smfn> <emfn> <mgmt_smfn> <mgmt_emfn>\n"
+      "                          Set PMEM pages smfn - emfn for guest data usage.\n"
+      "                          PMEM pages mgmt_smfn - mgmt_emfn are used to manage\n"
+      "                          above PMEM pages. The two types of PMEM pages cannot\n"
+      "                          overlap with each other\n"
     },
 };
 
