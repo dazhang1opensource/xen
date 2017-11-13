@@ -196,3 +196,32 @@ int libxl_vnvdimm_copy_config(libxl_ctx *ctx,
     GC_FREE;
     return rc;
 }
+
+#if defined(__linux__)
+
+int libxl_vnvdimm_add_pages(libxl__gc *gc, uint32_t domid,
+                            xen_pfn_t mfn, xen_pfn_t gpfn, xen_pfn_t nr_pages)
+{
+    unsigned int nr;
+    int ret;
+
+    while (nr_pages) {
+        nr = min(nr_pages, (unsigned long)UINT_MAX);
+
+        ret = xc_domain_populate_pmem_map(CTX->xch, domid, mfn, gpfn, nr);
+        if (ret && ret != -ERESTART) {
+            LOG(ERROR, "failed to map PMEM pages, mfn 0x%" PRI_xen_pfn ", "
+                "gpfn 0x%" PRI_xen_pfn ", nr_pages %u, err %d",
+                mfn, gpfn, nr, ret);
+            break;
+        }
+
+        nr_pages -= nr;
+        mfn += nr;
+        gpfn += nr;
+    }
+
+    return ret;
+}
+
+#endif /* __linux__ */
