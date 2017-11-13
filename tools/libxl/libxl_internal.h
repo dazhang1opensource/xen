@@ -4349,6 +4349,12 @@ static inline bool libxl__string_is_default(char **s)
 {
     return *s == NULL;
 }
+
+#if defined(__linux__)
+int libxl_vnvdimm_add_pages(libxl__gc *gc, uint32_t domid,
+                            xen_pfn_t mfn, xen_pfn_t gpfn, xen_pfn_t nr_pages);
+#endif /* __linux__ */
+
 #endif
 
 /*
