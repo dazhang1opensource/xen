@@ -1268,6 +1268,39 @@ connectors=id0:1920x1080;id1:800x600;id2:640x480
 
 =back
 
+=item B<vnvdimms=[ 'VNVDIMM_SPEC', 'VNVDIMM_SPEC', ... ]>
+
+Specifies the virtual NVDIMM devices which are provided to the guest.
+
+Each B<VNVDIMM_SPEC> is a comma-separated list of C<KEY=VALUE> settings
+from the following list:
+
+=over 4
+
+=item B<type=TYPE>
+
+Specifies the type of host backend of the virtual NVDIMM device. Following
+is a list of supported types:
+
+=over 4
+
+=item B<mfn>
+
+backs the virtual NVDIMM device by a contiguous host PMEM region.
+
+=back
+
+=item B<backend=BACKEND>
+
+Specifies the host backend of the virtual NVDIMM device. If C<type=mfn>,
+then B<BACKEND> specifies the start MFN of the host PMEM region.
+
+=item B<nr_pages=NUMBER>
+
+Specifies the number of pages of the host backend.
+
+=back
+
 =item B<dm_restrict=BOOLEAN>
 
 Restrict the device model after startup,

@@ -851,6 +851,109 @@ out:
     return rc;
 }
 
+static int parse_vnvdimm_config(libxl_device_vnvdimm *vnvdimm, char *token)
+{
+    char *oparg, *endptr;
+    unsigned long val;
+
+    if (MATCH_OPTION("type", token, oparg)) {
+        if (libxl_vnvdimm_backend_type_from_string(oparg,
+                                                   &vnvdimm->backend_type)) {
+            fprintf(stderr,
+                    "ERROR: invalid vNVDIMM backend type '%s'\n",
+                    oparg);
+            return 1;
+        }
+    } else if (MATCH_OPTION("nr_pages", token, oparg)) {
+        val = strtoul(oparg, &endptr, 0);
+        if (endptr == oparg || val == ULONG_MAX)
+        {
+            fprintf(stderr,
+                    "ERROR: invalid number of vNVDIMM backend pages '%s'\n",
+                    oparg);
+            return 1;
+        }
+        vnvdimm->nr_pages = val;
+    } else if (MATCH_OPTION("backend", token, oparg)) {
+        /* Skip: handled by parse_vnvdimms() */
+    } else {
+        fprintf(stderr, "ERROR: unknown string '%s' in vnvdimm spec\n", token);
+        return 1;
+    }
+
+    return 0;
+}
+
+/*
+ * vnvdimms = [ 'type=<mfn>, backend=<base_mfn>, nr_pages=<N>', ... ]
+ */
+static void parse_vnvdimms(XLU_Config *config, libxl_domain_config *d_config)
+{
+    XLU_ConfigList *vnvdimms;
+    const char *buf;
+    int rc;
+
+    rc = xlu_cfg_get_list(config, "vnvdimms", &vnvdimms, 0, 0);
+    if ( rc )
+        return;
+
+#if !defined(__linux__)
+    fprintf(stderr, "ERROR: 'vnvdimms' is only supported on Linux\n");
+    exit(-ERROR_FAIL);
+#endif
+
+    d_config->num_vnvdimms = 0;
+    d_config->vnvdimms = NULL;
+
+    while ((buf = xlu_cfg_get_listitem(vnvdimms,
+                                       d_config->num_vnvdimms)) != NULL) {
+        libxl_device_vnvdimm *vnvdimm =
+            ARRAY_EXTEND_INIT(d_config->vnvdimms, d_config->num_vnvdimms,
+                              libxl_device_vnvdimm_init);
+        char *buf2 = strdup(buf), *backend = NULL, *p, *endptr;
+        unsigned long mfn;
+
+        p = strtok(buf2, ",");
+        if (!p)
+            goto skip_nvdimm;
+
+        do {
+            while (*p == ' ')
+                p++;
+
+            rc = 0;
+            if (!MATCH_OPTION("backend", p, backend))
+                rc = parse_vnvdimm_config(vnvdimm, p);
+            if (rc)
+                exit(-ERROR_FAIL);
+        } while ((p = strtok(NULL, ",")) != NULL);
+
+        switch (vnvdimm->backend_type)
+        {
+        case LIBXL_VNVDIMM_BACKEND_TYPE_MFN:
+            mfn = strtoul(backend, &endptr, 0);
+            if (endptr == backend || mfn == ULONG_MAX)
+            {
+                fprintf(stderr,
+                        "ERROR: invalid start MFN of host NVDIMM '%s'\n",
+                        backend);
+                exit(-ERROR_FAIL);
+            }
+            vnvdimm->u.mfn = mfn;
+
+            break;
+        }
+
+    skip_nvdimm:
+        free(buf2);
+    }
+}
+
+/*
+ * Reserved RAM space by qemu-xen for guest ACPI.
+ */
+#define QEMU_XEN_ACPI_BUILD_TABLE_MAX_SIZE 0x200000
+
 void parse_config_data(const char *config_source,
                        const char *config_data,
                        int config_len,
@@ -2130,6 +2233,11 @@ skip_usbdev:
             fprintf(stderr, "ERROR: require positive dm_acpi_size.\n");
             exit(-ERROR_FAIL);
         }
+
+        /* parse 'vnvdimms' */
+        parse_vnvdimms(config, d_config);
+        if (d_config->num_vnvdimms && !dm_acpi_size)
+            dm_acpi_size = QEMU_XEN_ACPI_BUILD_TABLE_MAX_SIZE;
 
         b_info->u.hvm.dm_acpi_size = dm_acpi_size;
     }
