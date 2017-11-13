@@ -168,3 +168,31 @@ int libxl_nvdimm_pmem_setup_data(libxl_ctx *ctx,
 
     return rc ? ERROR_FAIL : 0;
 }
+
+int libxl_vnvdimm_copy_config(libxl_ctx *ctx,
+                              libxl_domain_config *dst,
+                              const libxl_domain_config *src)
+{
+    GC_INIT(ctx);
+    unsigned int nr = src->num_vnvdimms;
+    libxl_device_vnvdimm *vnvdimms;
+    int rc = 0;
+
+    if (!nr)
+        goto out;
+
+    vnvdimms = libxl__calloc(NOGC, nr, sizeof(*vnvdimms));
+    if (!vnvdimms) {
+        rc = ERROR_NOMEM;
+        goto out;
+    }
+
+    dst->num_vnvdimms = nr;
+    while (nr--)
+        libxl_device_vnvdimm_copy(ctx, &vnvdimms[nr], &src->vnvdimms[nr]);
+    dst->vnvdimms = vnvdimms;
+
+ out:
+    GC_FREE;
+    return rc;
+}

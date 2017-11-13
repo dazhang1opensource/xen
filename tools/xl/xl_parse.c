@@ -851,6 +851,116 @@ out:
     return rc;
 }
 
+static int parse_vnvdimm_config(libxl_device_vnvdimm *vnvdimm, char *token)
+{
+    char *oparg, *endptr;
+    unsigned long val;
+
+    if (MATCH_OPTION("type", token, oparg)) {
+        if (libxl_vnvdimm_backend_type_from_string(oparg,
+                                                   &vnvdimm->backend_type)) {
+            fprintf(stderr,
+                    "ERROR: invalid vNVDIMM backend type '%s'\n",
+                    oparg);
+            return 1;
+        }
+    } else if (MATCH_OPTION("nr_pages", token, oparg)) {
+        val = strtoul(oparg, &endptr, 0);
+        if (endptr == oparg || val == ULONG_MAX)
+        {
+            fprintf(stderr,
+                    "ERROR: invalid number of vNVDIMM backend pages '%s'\n",
+                    oparg);
+            return 1;
+        }
+        vnvdimm->nr_pages = val;
+    } else if (MATCH_OPTION("backend", token, oparg)) {
+        /* Skip: handled by parse_vnvdimms() */
+    } else {
+        fprintf(stderr, "ERROR: unknown string '%s' in vnvdimm spec\n", token);
+        return 1;
+    }
+
+    return 0;
+}
+
+/*
+ * vnvdimms = [ 'type=<mfn>, backend=<base_mfn>, nr_pages=<N>', ... ]
+ *
+ * Return the number of pages of all vNVDIMM devices.
+ */
+static unsigned long parse_vnvdimms(XLU_Config *config,
+                                    libxl_domain_config *d_config)
+{
+    XLU_ConfigList *vnvdimms;
+    const char *buf;
+    unsigned long nr_pages = 0;
+    int rc;
+
+    rc = xlu_cfg_get_list(config, "vnvdimms", &vnvdimms, 0, 0);
+    if (rc)
+        return 0;
+
+#if !defined(__linux__)
+    fprintf(stderr, "ERROR: 'vnvdimms' is only supported on Linux\n");
+    exit(-ERROR_FAIL);
+#endif
+
+    d_config->num_vnvdimms = 0;
+    d_config->vnvdimms = NULL;
+
+    while ((buf = xlu_cfg_get_listitem(vnvdimms,
+                                       d_config->num_vnvdimms)) != NULL) {
+        libxl_device_vnvdimm *vnvdimm =
+            ARRAY_EXTEND_INIT(d_config->vnvdimms, d_config->num_vnvdimms,
+                              libxl_device_vnvdimm_init);
+        char *buf2 = strdup(buf), *backend = NULL, *p, *endptr;
+        unsigned long mfn;
+
+        p = strtok(buf2, ",");
+        if (!p)
+            goto skip_nvdimm;
+
+        do {
+            while (*p == ' ')
+                p++;
+
+            rc = 0;
+            if (!MATCH_OPTION("backend", p, backend))
+                rc = parse_vnvdimm_config(vnvdimm, p);
+            if (rc)
+                exit(-ERROR_FAIL);
+        } while ((p = strtok(NULL, ",")) != NULL);
+
+        switch (vnvdimm->backend_type)
+        {
+        case LIBXL_VNVDIMM_BACKEND_TYPE_MFN:
+            mfn = strtoul(backend, &endptr, 0);
+            if (endptr == backend || mfn == ULONG_MAX) {
+                fprintf(stderr,
+                        "ERROR: invalid start MFN of host NVDIMM '%s'\n",
+                        backend);
+                exit(-ERROR_FAIL);
+            }
+            vnvdimm->u.mfn = mfn;
+
+            break;
+        }
+
+        nr_pages += vnvdimm->nr_pages;
+
+    skip_nvdimm:
+        free(buf2);
+    }
+
+    return nr_pages;
+}
+
+/*
+ * Reserved RAM space by qemu-xen for guest ACPI.
+ */
+#define QEMU_XEN_ACPI_BUILD_TABLE_MAX_SIZE 0x200000
+
 void parse_config_data(const char *config_source,
                        const char *config_data,
                        int config_len,
@@ -870,6 +980,7 @@ void parse_config_data(const char *config_source,
     int pci_seize = 0;
     int i, e;
     char *kernel_basename;
+    unsigned long nr_vnvdimm_pages = 0;
 
     libxl_domain_create_info *c_info = &d_config->c_info;
     libxl_domain_build_info *b_info = &d_config->b_info;
@@ -1092,14 +1203,6 @@ void parse_config_data(const char *config_source,
         fprintf(stderr, "Unknown on_soft_reset action \"%s\" specified\n", buf);
         exit(1);
     }
-
-    /* libxl_get_required_shadow_memory() must be called after final values
-     * (default or specified) for vcpus and memory are set, because the
-     * calculation depends on those values. */
-    b_info->shadow_memkb = !xlu_cfg_get_long(config, "shadow_memory", &l, 0)
-        ? l * 1024
-        : libxl_get_required_shadow_memory(b_info->max_memkb,
-                                           b_info->max_vcpus);
 
     xlu_cfg_get_defbool(config, "nomigrate", &b_info->disable_migrate, 0);
 
@@ -2128,6 +2231,20 @@ skip_usbdev:
     parse_extra_args(_hvm);
 
 #undef parse_extra_args
+
+    if (b_info->type == LIBXL_DOMAIN_TYPE_HVM &&
+        b_info->device_model_version == LIBXL_DEVICE_MODEL_VERSION_QEMU_XEN)
+        /* parse 'vnvdimms' */
+        nr_vnvdimm_pages = parse_vnvdimms(config, d_config);
+
+    /* libxl_get_required_shadow_memory() must be called after final values
+     * (default or specified) for vcpus and memory are set, because the
+     * calculation depends on those values. */
+    b_info->shadow_memkb = !xlu_cfg_get_long(config, "shadow_memory", &l, 0)
+        ? l * 1024
+        : libxl_get_required_shadow_memory(b_info->max_memkb +
+                                           nr_vnvdimm_pages * 4,
+                                           b_info->max_vcpus);
 
     /* If we've already got vfb=[] for PV guest then ignore top level
      * VNC config. */

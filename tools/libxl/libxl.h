@@ -2399,6 +2399,11 @@ int libxl_nvdimm_pmem_setup_data(libxl_ctx *ctx,
                                  unsigned long data_smfn, unsigned data_emfn,
                                  unsigned long mgmt_smfn, unsigned mgmt_emfn);
 
+int libxl_vnvdimm_copy_config(libxl_ctx *ctx,
+                              libxl_domain_config *dst,
+                              const libxl_domain_config *src)
+                              LIBXL_EXTERNAL_CALLERS_ONLY;
+
 /* misc */
 
 /* Each of these sets or clears the flag according to whether the

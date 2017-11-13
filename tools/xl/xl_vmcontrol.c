@@ -381,12 +381,25 @@ static void reload_domain_config(uint32_t domid,
     if (rc) {
         LOG("failed to retrieve guest configuration (rc=%d). "
             "reusing old configuration", rc);
-        libxl_domain_config_dispose(&d_config_new);
+        goto error_out;
     } else {
+        rc = libxl_vnvdimm_copy_config(ctx, &d_config_new, d_config);
+        if (rc) {
+            LOG("failed to copy vnvdimm configuration (rc=%d). "
+                "reusing old configuration", rc);
+            libxl_domain_config_dispose(&d_config_new);
+            goto error_out;
+        }
+
         libxl_domain_config_dispose(d_config);
         /* Steal allocations */
         memcpy(d_config, &d_config_new, sizeof(libxl_domain_config));
     }
+
+    return;
+
+ error_out:
+    libxl_domain_config_dispose(&d_config_new);
 }
 
 /* Can update r_domid if domain is destroyed */
