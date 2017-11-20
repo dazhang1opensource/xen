@@ -581,6 +581,7 @@ libxl_domain_build_info = Struct("domain_build_info",[
                                        ("rdm", libxl_rdm_reserve),
                                        ("rdm_mem_boundary_memkb", MemKB),
                                        ("mca_caps",         uint64),
+                                       ("dm_acpi_size",     uint64),
                                        ])),
                  ("pv", Struct(None, [("kernel", string),
                                       ("slack_memkb", MemKB),
