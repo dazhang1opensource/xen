@@ -364,7 +364,12 @@ int libxl__arch_extra_memory(libxl__gc *gc,
                              const libxl_domain_build_info *info,
                              uint64_t *out)
 {
-    *out = LIBXL_MAXMEM_CONSTANT;
+    uint64_t dm_acpi_size = 0;
+
+    if (info->type == LIBXL_DOMAIN_TYPE_HVM)
+        dm_acpi_size = info->u.hvm.dm_acpi_size;
+
+    *out = LIBXL_MAXMEM_CONSTANT + DIV_ROUNDUP(dm_acpi_size, 1024);
 
     return 0;
 }

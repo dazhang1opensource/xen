@@ -1642,6 +1642,13 @@ table. True (1) by default.
 Include the Windows laptop/slate mode switch device in the virtual
 firmware ACPI table. False (0) by default.
 
+=item B<dm_acpi_size=NUMBER>
+
+B<(x86 HVM only)> Reserve the specified bytes of guest memory for ACPI
+built by the device model. The default value is determined according
+to which device model is in use and which ACPI tables are provided by
+that device model.
+
 =item B<apic=BOOLEAN>
 
 B<(x86 only)> Include information regarding APIC (Advanced Programmable Interrupt
