@@ -157,4 +157,8 @@ void __init xsm_fixup_ops (struct xsm_operations *ops)
     set_to_dummy_if_null(ops, dm_op);
 #endif
     set_to_dummy_if_null(ops, xen_version);
+
+#ifdef CONFIG_NVDIMM_PMEM
+    set_to_dummy_if_null(ops, populate_pmem_map);
+#endif
 }

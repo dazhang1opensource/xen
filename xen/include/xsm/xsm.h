@@ -180,6 +180,10 @@ struct xsm_operations {
     int (*dm_op) (struct domain *d);
 #endif
     int (*xen_version) (uint32_t cmd);
+
+#ifdef CONFIG_NVDIMM_PMEM
+    int (*populate_pmem_map) (struct domain *d1, struct domain *d2);
+#endif
 };
 
 #ifdef CONFIG_XSM
@@ -691,6 +695,14 @@ static inline int xsm_xen_version (xsm_default_t def, uint32_t op)
 {
     return xsm_ops->xen_version(op);
 }
+
+#ifdef CONFIG_NVDIMM_PMEM
+static inline int xsm_populate_pmem_map(xsm_default_t def,
+                                        struct domain *d1, struct domain *d2)
+{
+    return xsm_ops->populate_pmem_map(d1, d2);
+}
+#endif /* CONFIG_NVDIMM_PMEM */
 
 #endif /* XSM_NO_WRAPPERS */
 
