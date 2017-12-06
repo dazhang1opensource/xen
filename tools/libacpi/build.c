@@ -16,6 +16,7 @@
 #include LIBACPI_STDUTILS
 #include "acpi2_0.h"
 #include "libacpi.h"
+#include "qemu.h"
 #include "ssdt_s3.h"
 #include "ssdt_s4.h"
 #include "ssdt_tpm.h"
@@ -103,6 +104,18 @@ static int dm_acpi_blacklist_signature(struct acpi_config *config, uint64_t sig)
     dm_acpi_signature_blacklist[i] = sig;
 
     return 0;
+}
+
+/* Return true if no collision is found. */
+static bool dm_acpi_check_signature_collision(uint64_t sig)
+{
+    unsigned int i;
+
+    for ( i = 0; i < NR_SIGNATURE_BLACKLIST_ENTS; i++ )
+        if ( sig == dm_acpi_signature_blacklist[i] )
+            return false;
+
+    return true;
 }
 
 void set_checksum(void *table, uint32_t checksum_offset, uint32_t length)
@@ -388,6 +401,94 @@ static int construct_passthrough_tables(struct acpi_ctxt *ctxt,
     return nr_added;
 }
 
+static int load_qemu_xen_tables(struct acpi_ctxt *ctxt,
+                                unsigned long *table_ptrs,
+                                int nr_tables,
+                                struct acpi_config *config)
+{
+    struct acpi_header *header;
+    struct acpi_20_rsdp *rsdp;
+    struct acpi_20_rsdt *rsdt;
+    uint32_t table_paddr, sig;
+    unsigned int nr_added = 0, nr_rsdt_ents;
+
+    printf("Loading QEMU ACPI tables ...\n");
+
+    if ( fw_cfg_probe_roms(ctxt) )
+        return 0;
+
+    if ( loader_exec(ctxt) )
+        return 0;
+
+    rsdp = loader_get_rsdp();
+    if ( !rsdp )
+    {
+        printf("Cannot find QEMU RSDP\n");
+        return 0;
+    }
+
+    rsdt = (struct acpi_20_rsdt *)ctxt->mem_ops.p2v(ctxt, rsdp->rsdt_address);
+
+    nr_rsdt_ents =
+        (rsdt->header.length - sizeof(struct acpi_header)) / sizeof(uint32_t);
+    if ( nr_rsdt_ents > ACPI_MAX_SECONDARY_TABLES - nr_tables )
+    {
+        printf("Too many tables in QEMU ACPI tables\n");
+        goto exit;
+    }
+
+    for ( nr_added = 0; nr_added < nr_rsdt_ents; nr_added++ )
+    {
+        table_paddr = rsdt->entry[nr_added];
+        header = ctxt->mem_ops.p2v(ctxt, table_paddr);
+        sig = header->signature;
+
+        if ( !dm_acpi_check_signature_collision(sig) )
+        {
+            printf("QEMU ACPI table conflict with Xen ACPI table '%c%c%c%c'\n",
+                   (char)(sig & 0xff),
+                   (char)((sig >> 8) & 0xff),
+                   (char)((sig >> 16) & 0xff),
+                   (char)((sig >> 24) & 0xff));
+            break;
+        }
+
+        if ( sig != ACPI_2_0_SSDT_SIGNATURE )
+            dm_acpi_blacklist_signature(config, sig);
+
+        table_ptrs[nr_tables++] = table_paddr;
+    }
+
+    if ( nr_added < nr_rsdt_ents )
+        while ( nr_added )
+        {
+            table_ptrs[--nr_tables] = 0;
+            nr_added--;
+        }
+
+exit:
+    /* Cleanup unused QEMU RSDP & RSDT. */
+    memset(rsdp, 0,
+           rsdp->revision == ACPI_2_0_RSDP_REVISION ?
+           rsdp->length : sizeof(struct acpi_10_rsdp));
+    memset(rsdt, 0, rsdt->header.length);
+
+    return nr_added;
+}
+
+static int construct_dm_acpi_tables(struct acpi_ctxt *ctxt,
+                                    unsigned long *table_ptrs,
+                                    int nr_tables,
+                                    struct acpi_config *config)
+{
+    int nr_added = 0;
+
+    if ( config->table_flags & ACPI_HAS_QEMU_XEN )
+        nr_added += load_qemu_xen_tables(ctxt, table_ptrs, nr_tables, config);
+
+    return nr_added;
+}
+
 static int construct_secondary_tables(struct acpi_ctxt *ctxt,
                                       unsigned long *table_ptrs,
                                       struct acpi_config *config,
@@ -530,6 +631,10 @@ static int construct_secondary_tables(struct acpi_ctxt *ctxt,
     nr_tables += construct_passthrough_tables(ctxt, table_ptrs,
                                               nr_tables, config);
 
+    /* Load ACPI built by device model */
+    if ( config->table_flags & ACPI_HAS_DM )
+        nr_tables += construct_dm_acpi_tables(ctxt, table_ptrs,
+                                              nr_tables, config);
 
     table_ptrs[nr_tables] = 0;
     return nr_tables;
