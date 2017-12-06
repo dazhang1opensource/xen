@@ -21,6 +21,7 @@
 
 #include LIBACPI_STDUTILS
 #include "libacpi.h"
+#include "qemu.h"
 
 /* QEMU fw_cfg I/O ports on x86 */
 #define FW_CFG_PORT_SEL         0x510
@@ -28,6 +29,7 @@
 
 /* QEMU fw_cfg entries */
 #define FW_CFG_SIGNATURE        0x0000
+#define FW_CFG_FILE_DIR         0x0019
 
 static inline void fw_cfg_select(uint16_t entry)
 {
@@ -53,6 +55,31 @@ bool fw_cfg_exists(void)
     fw_cfg_read_entry(FW_CFG_SIGNATURE, &sig, sizeof(sig));
 
     return sig == 0x554d4551 /* "QEMU" */;
+}
+
+int fw_cfg_probe_roms(struct acpi_ctxt *ctxt)
+{
+    struct fw_cfg_file file;
+    uint32_t count, i;
+    int rc = 0;
+
+    fw_cfg_read_entry(FW_CFG_FILE_DIR, &count, sizeof(count));
+    count = be32_to_cpu(count);
+
+    for ( i = 0; i < count; i++ )
+    {
+        fw_cfg_read(&file, sizeof(file));
+        rc = loader_add_rom(ctxt, &file);
+        if ( rc )
+        {
+            file.name[FW_CFG_FILE_PATH_MAX_LENGTH - 1] = '\0';
+            printf("ERROR: failed to load QEMU ROM %s, err %d\n",
+                   file.name, rc);
+            break;
+        }
+    }
+
+    return rc;
 }
 
 /*
