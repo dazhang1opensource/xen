@@ -36,8 +36,10 @@ struct fw_cfg_file {
 };
 
 int fw_cfg_probe_roms(struct acpi_ctxt *ctxt);
+void fw_cfg_read_file(const struct fw_cfg_file *file, void *buf);
 
 int loader_add_rom(struct acpi_ctxt* ctxt, const struct fw_cfg_file *file);
+int loader_exec(struct acpi_ctxt *ctxt);
 
 #endif /* !__QEMU_H__ */
 

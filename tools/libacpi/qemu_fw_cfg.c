@@ -82,6 +82,12 @@ int fw_cfg_probe_roms(struct acpi_ctxt *ctxt)
     return rc;
 }
 
+void fw_cfg_read_file(const struct fw_cfg_file *file, void *buf)
+{
+    fw_cfg_read_entry(be16_to_cpu(file->select), buf,
+                      be32_to_cpu(file->size));
+}
+
 /*
  * Local variables:
  * mode: C
