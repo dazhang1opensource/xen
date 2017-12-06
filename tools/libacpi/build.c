@@ -56,6 +56,55 @@ struct acpi_info {
     uint64_t pci_hi_min, pci_hi_len; /* 24, 32 - PCI I/O hole boundaries */
 };
 
+/*
+ * DM ACPI table signature blacklist:
+ *
+ * Signatures of ACPI tables, which are built by Xen and can have
+ * only one instance, are added to this blacklist. Xen prevents to
+ * load ACPI tables from the device model, which have signatures in
+ * the blacklist.
+ *
+ * Because the max number of ACPI tables allowed by libacpi is small,
+ * we statically allocate the space for the blacklist. We reserve a
+ * little larger space for non-secondary tables (including RSDP, RSDT,
+ * XSDT, DSDT, FADT v1.0 and FADT so far).
+ */
+
+#define NR_SIGNATURE_BLACKLIST_ENTS (8 + ACPI_MAX_SECONDARY_TABLES)
+static uint64_t dm_acpi_signature_blacklist[NR_SIGNATURE_BLACKLIST_ENTS];
+
+static int dm_acpi_blacklist_signature(struct acpi_config *config, uint64_t sig)
+{
+    unsigned int i;
+
+    if ( !(config->table_flags & ACPI_HAS_DM) )
+        return 0;
+
+    for ( i = 0; i < NR_SIGNATURE_BLACKLIST_ENTS; i++ )
+    {
+        uint64_t entry = dm_acpi_signature_blacklist[i];
+
+        if ( entry == sig )
+            return 0;
+        else if ( entry == 0 )
+            break;
+    }
+
+    if ( i >= NR_SIGNATURE_BLACKLIST_ENTS )
+    {
+        config->table_flags &= ~ACPI_HAS_DM;
+
+        printf("ERROR: DM ACPI signature blacklist is full (size %u), "
+               "disable DM ACPI\n", NR_SIGNATURE_BLACKLIST_ENTS);
+
+        return -ENOSPC;
+    }
+
+    dm_acpi_signature_blacklist[i] = sig;
+
+    return 0;
+}
+
 static void set_checksum(
     void *table, uint32_t checksum_offset, uint32_t length)
 {
@@ -360,6 +409,7 @@ static int construct_secondary_tables(struct acpi_ctxt *ctxt,
         madt = construct_madt(ctxt, config, info);
         if (!madt) return -1;
         table_ptrs[nr_tables++] = ctxt->mem_ops.v2p(ctxt, madt);
+        dm_acpi_blacklist_signature(config, madt->header.signature);
     }
 
     /* HPET. */
@@ -368,6 +418,7 @@ static int construct_secondary_tables(struct acpi_ctxt *ctxt,
         hpet = construct_hpet(ctxt, config);
         if (!hpet) return -1;
         table_ptrs[nr_tables++] = ctxt->mem_ops.v2p(ctxt, hpet);
+        dm_acpi_blacklist_signature(config, hpet->header.signature);
     }
 
     /* WAET. */
@@ -377,6 +428,7 @@ static int construct_secondary_tables(struct acpi_ctxt *ctxt,
         if ( !waet )
             return -1;
         table_ptrs[nr_tables++] = ctxt->mem_ops.v2p(ctxt, waet);
+        dm_acpi_blacklist_signature(config, waet->header.signature);
     }
 
     if ( config->table_flags & ACPI_HAS_SSDT_PM )
@@ -450,6 +502,7 @@ static int construct_secondary_tables(struct acpi_ctxt *ctxt,
                          offsetof(struct acpi_header, checksum),
                          tcpa->header.length);
         }
+        dm_acpi_blacklist_signature(config, tcpa->header.signature);
     }
 
     /* SRAT and SLIT */
@@ -459,11 +512,17 @@ static int construct_secondary_tables(struct acpi_ctxt *ctxt,
         struct acpi_20_slit *slit = construct_slit(ctxt, config);
 
         if ( srat )
+        {
             table_ptrs[nr_tables++] = ctxt->mem_ops.v2p(ctxt, srat);
+            dm_acpi_blacklist_signature(config, srat->header.signature);
+        }
         else
             printf("Failed to build SRAT, skipping...\n");
         if ( slit )
+        {
             table_ptrs[nr_tables++] = ctxt->mem_ops.v2p(ctxt, slit);
+            dm_acpi_blacklist_signature(config, slit->header.signature);
+        }
         else
             printf("Failed to build SLIT, skipping...\n");
     }
@@ -543,6 +602,7 @@ int acpi_build_tables(struct acpi_ctxt *ctxt, struct acpi_config *config)
     facs = ctxt->mem_ops.alloc(ctxt, sizeof(struct acpi_20_facs), 16);
     if (!facs) goto oom;
     memcpy(facs, &Facs, sizeof(struct acpi_20_facs));
+    dm_acpi_blacklist_signature(config, facs->signature);
 
     /*
      * Alternative DSDTs we get linked against. A cover-all DSDT for up to the
@@ -564,6 +624,8 @@ int acpi_build_tables(struct acpi_ctxt *ctxt, struct acpi_config *config)
         if (!dsdt) goto oom;
         memcpy(dsdt, config->dsdt_anycpu, config->dsdt_anycpu_len);
     }
+    dm_acpi_blacklist_signature(config,
+                                ((struct acpi_header *)dsdt)->signature);
 
     /*
      * N.B. ACPI 1.0 operating systems may not handle FADT with revision 2
@@ -583,6 +645,7 @@ int acpi_build_tables(struct acpi_ctxt *ctxt, struct acpi_config *config)
     set_checksum(fadt_10,
                  offsetof(struct acpi_header, checksum),
                  sizeof(struct acpi_10_fadt));
+    dm_acpi_blacklist_signature(config, fadt_10->header.signature);
 
     switch ( config->acpi_revision )
     {
@@ -634,6 +697,7 @@ int acpi_build_tables(struct acpi_ctxt *ctxt, struct acpi_config *config)
         fadt->iapc_boot_arch |= ACPI_FADT_NO_CMOS_RTC;
     }
     set_checksum(fadt, offsetof(struct acpi_header, checksum), fadt_size);
+    dm_acpi_blacklist_signature(config, fadt->header.signature);
 
     nr_secondaries = construct_secondary_tables(ctxt, secondary_tables,
                  config, acpi_info);
@@ -652,6 +716,7 @@ int acpi_build_tables(struct acpi_ctxt *ctxt, struct acpi_config *config)
     set_checksum(xsdt,
                  offsetof(struct acpi_header, checksum),
                  xsdt->header.length);
+    dm_acpi_blacklist_signature(config, xsdt->header.signature);
 
     rsdt = ctxt->mem_ops.alloc(ctxt, sizeof(struct acpi_20_rsdt) +
                                sizeof(uint32_t) * nr_secondaries,
@@ -665,6 +730,7 @@ int acpi_build_tables(struct acpi_ctxt *ctxt, struct acpi_config *config)
     set_checksum(rsdt,
                  offsetof(struct acpi_header, checksum),
                  rsdt->header.length);
+    dm_acpi_blacklist_signature(config, rsdt->header.signature);
 
     /*
      * Fill in low-memory data structures: acpi_info and RSDP.
@@ -680,6 +746,7 @@ int acpi_build_tables(struct acpi_ctxt *ctxt, struct acpi_config *config)
     set_checksum(rsdp,
                  offsetof(struct acpi_20_rsdp, extended_checksum),
                  sizeof(struct acpi_20_rsdp));
+    dm_acpi_blacklist_signature(config, rsdp->signature);
 
     if ( !new_vm_gid(ctxt, config, acpi_info) )
         goto oom;
