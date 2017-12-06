@@ -22,6 +22,7 @@
 #define __QEMU_H__
 
 #include LIBACPI_STDUTILS
+#include "acpi2_0.h"
 #include "libacpi.h"
 
 #define FW_CFG_FILE_PATH_MAX_LENGTH 56
@@ -40,6 +41,7 @@ void fw_cfg_read_file(const struct fw_cfg_file *file, void *buf);
 
 int loader_add_rom(struct acpi_ctxt* ctxt, const struct fw_cfg_file *file);
 int loader_exec(struct acpi_ctxt *ctxt);
+struct acpi_20_rsdp *loader_get_rsdp(void);
 
 #endif /* !__QEMU_H__ */
 

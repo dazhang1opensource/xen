@@ -48,6 +48,11 @@ int loader_exec(struct acpi_ctxt *ctxt)
     return -ENOSYS;
 }
 
+struct acpi_20_rsdp *loader_get_rsdp(void)
+{
+    return NULL;
+}
+
 /*
  * Local variables:
  * mode: C
