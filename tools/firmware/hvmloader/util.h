@@ -66,6 +66,19 @@ static inline int test_and_clear_bit(int nr, volatile void *addr)
     return oldbit;
 }
 
+static inline uint32_t be32_to_cpu(uint32_t v)
+{
+    return ((v & 0x000000ffUL) << 24) |
+           ((v & 0x0000ff00UL) << 8)  |
+           ((v & 0x00ff0000UL) >> 8)  |
+           ((v & 0xff000000UL) >> 24);
+}
+
+static inline uint16_t be16_to_cpu(uint16_t v)
+{
+    return ((v & 0x00ff) << 8) | ((v & 0xff00) >> 8);
+}
+
 /* MSR access */
 void wrmsr(uint32_t idx, uint64_t v);
 uint64_t rdmsr(uint32_t idx);

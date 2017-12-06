@@ -1,9 +1,7 @@
 /*
- * libacpi/qemu_stub.c
+ * libacpi/qemu.h
  *
- * Stub functions of QEMU drivers. QEMU drivers are only used with
- * HVMLoader now. Add stub functions to ensure libacpi can be compiled
- * with others.
+ * Header file of QEMU drivers.
  *
  * Copyright (C) 2017,  Intel Corporation
  *
@@ -20,24 +18,28 @@
  * License along with this library; If not, see <http://www.gnu.org/licenses/>.
  */
 
+#ifndef __QEMU_H__
+#define __QEMU_H__
+
 #include LIBACPI_STDUTILS
 #include "libacpi.h"
-#include "qemu.h"
 
-bool fw_cfg_exists(void)
-{
-    return false;
-}
+#define FW_CFG_FILE_PATH_MAX_LENGTH 56
 
-int fw_cfg_probe_roms(struct acpi_ctxt *ctxt)
-{
-    return -ENOSYS;
-}
+/* An individual file entry, 64 bytes total. */
+struct fw_cfg_file {
+    uint32_t size;      /* size of referenced fw_cfg item, big-endian */
+    uint16_t select;    /* selector key of fw_cfg item, big-endian */
+    uint16_t reserved;
+    char name[FW_CFG_FILE_PATH_MAX_LENGTH]; /* fw_cfg item name,    */
+                                            /* NUL-terminated ascii */
+};
 
-int loader_add_rom(struct acpi_ctxt* ctxt, const struct fw_cfg_file *file)
-{
-    return -ENOSYS;
-}
+int fw_cfg_probe_roms(struct acpi_ctxt *ctxt);
+
+int loader_add_rom(struct acpi_ctxt* ctxt, const struct fw_cfg_file *file);
+
+#endif /* !__QEMU_H__ */
 
 /*
  * Local variables:
