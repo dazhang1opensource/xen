@@ -21,6 +21,7 @@
  */
 
 #include LIBACPI_STDUTILS
+#include "acpi2_0.h"
 #include "libacpi.h"
 #include "qemu.h"
 
@@ -371,6 +372,13 @@ int loader_exec(struct acpi_ctxt *ctxt)
     }
 
     return rc;
+}
+
+struct acpi_20_rsdp *loader_get_rsdp(void)
+{
+    struct rom *rsdp = loader_find_rom("etc/acpi/rsdp");
+
+    return rsdp ? rsdp->data : NULL;
 }
 
 /*
