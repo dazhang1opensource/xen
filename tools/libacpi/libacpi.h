@@ -20,6 +20,8 @@
 #ifndef __LIBACPI_H__
 #define __LIBACPI_H__
 
+#include <stdbool.h>
+
 #define ACPI_HAS_COM1              (1<<0)
 #define ACPI_HAS_COM2              (1<<1)
 #define ACPI_HAS_LPT1              (1<<2)
@@ -103,6 +105,8 @@ struct acpi_config {
 };
 
 int acpi_build_tables(struct acpi_ctxt *ctxt, struct acpi_config *config);
+
+bool fw_cfg_exists(void);
 
 #endif /* __LIBACPI_H__ */
 

@@ -531,6 +531,7 @@ static int construct_secondary_tables(struct acpi_ctxt *ctxt,
     nr_tables += construct_passthrough_tables(ctxt, table_ptrs,
                                               nr_tables, config);
 
+
     table_ptrs[nr_tables] = 0;
     return nr_tables;
 }

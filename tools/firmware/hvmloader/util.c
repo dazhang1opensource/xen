@@ -979,6 +979,9 @@ void hvmloader_acpi_build_tables(struct acpi_config *config,
     if ( !strncmp(xenstore_read("platform/acpi_laptop_slate", "0"), "1", 1)  )
         config->table_flags |= ACPI_HAS_SSDT_LAPTOP_SLATE;
 
+    if ( fw_cfg_exists() )
+        config->table_flags |= ACPI_HAS_QEMU_XEN;
+
     config->table_flags |= (ACPI_HAS_TCPA | ACPI_HAS_IOAPIC |
                             ACPI_HAS_WAET | ACPI_HAS_PMTIMER |
                             ACPI_HAS_BUTTONS | ACPI_HAS_VGA |
