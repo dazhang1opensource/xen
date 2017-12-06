@@ -105,8 +105,7 @@ static int dm_acpi_blacklist_signature(struct acpi_config *config, uint64_t sig)
     return 0;
 }
 
-static void set_checksum(
-    void *table, uint32_t checksum_offset, uint32_t length)
+void set_checksum(void *table, uint32_t checksum_offset, uint32_t length)
 {
     uint8_t *p, sum = 0;
 

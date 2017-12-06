@@ -108,6 +108,8 @@ int acpi_build_tables(struct acpi_ctxt *ctxt, struct acpi_config *config);
 
 bool fw_cfg_exists(void);
 
+void set_checksum(void *table, uint32_t checksum_offset, uint32_t length);
+
 #endif /* __LIBACPI_H__ */
 
 /*

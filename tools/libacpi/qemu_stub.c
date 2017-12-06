@@ -34,7 +34,16 @@ int fw_cfg_probe_roms(struct acpi_ctxt *ctxt)
     return -ENOSYS;
 }
 
+void fw_cfg_read_file(const struct fw_cfg_file *file, void *buf)
+{
+}
+
 int loader_add_rom(struct acpi_ctxt* ctxt, const struct fw_cfg_file *file)
+{
+    return -ENOSYS;
+}
+
+int loader_exec(struct acpi_ctxt *ctxt)
 {
     return -ENOSYS;
 }
