@@ -164,6 +164,9 @@ int xc_hvm_set_mem_type(
 int xc_hvm_inject_trap(
     xc_interface *xch, uint32_t domid, int vcpu, uint8_t vector,
     uint8_t type, uint32_t error_code, uint8_t insn_len, uint64_t cr2);
+int xc_nvdimm_pmem_rw(
+    xc_interface *xch, uint32_t domid,
+    unsigned long paddr, void *buffer, unsigned long length, bool is_write);
 
 #endif /* XC_WANT_COMPAT_DEVICEMODEL_API */
 

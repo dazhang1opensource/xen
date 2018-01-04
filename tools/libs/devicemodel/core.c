@@ -564,6 +564,26 @@ int xendevicemodel_shutdown(
     return xendevicemodel_op(dmod, domid, 1, &op, sizeof(op));
 }
 
+int xendevicemodel_pmem_rw(
+    xendevicemodel_handle *dmod, domid_t domid,
+    uint64_t paddr, void *buf, uint64_t length, uint8_t is_write)
+{
+    struct xen_dm_op op;
+    struct xen_dm_op_pmem_rw *data;
+
+    memset(&op, 0, sizeof(op));
+
+    op.op = XEN_DMOP_pmem_rw;
+    data = &op.u.pmem_rw;
+
+    data->paddr = paddr;
+    data->length = length;
+    data->is_write = is_write;
+
+    return xendevicemodel_op(dmod, domid, 2, &op, sizeof(op),
+                             buf, length);
+}
+
 int xendevicemodel_restrict(xendevicemodel_handle *dmod, domid_t domid)
 {
     return osdep_xendevicemodel_restrict(dmod, domid);
