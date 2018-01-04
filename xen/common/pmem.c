@@ -622,7 +622,7 @@ int pmem_do_sysctl(struct xen_sysctl_nvdimm_op *nvdimm)
 #ifdef CONFIG_X86
 
 static int pmem_assign_page(struct domain *d, struct page_info *pg,
-                            unsigned long gfn)
+                            unsigned long gfn, unsigned int type)
 {
     int rc;
 
@@ -633,32 +633,42 @@ static int pmem_assign_page(struct domain *d, struct page_info *pg,
     pg->u.inuse.type_info = 0;
     page_set_owner(pg, d);
 
-    rc = guest_physmap_add_page(d, _gfn(gfn), _mfn(page_to_mfn(pg)), 0);
-    if ( rc )
+    if ( type == XENMEM_pmem_map_type_data )
     {
-        page_set_owner(pg, NULL);
-        pg->count_info = PGC_state_free | PGC_pmem_page;
+        rc = guest_physmap_add_page(d, _gfn(gfn), _mfn(page_to_mfn(pg)), 0);
+        if ( rc )
+        {
+            page_set_owner(pg, NULL);
+            pg->count_info = PGC_state_free | PGC_pmem_page;
 
-        return rc;
+            return rc;
+        }
     }
 
     spin_lock(&d->pmem_lock);
-    page_list_add_tail(pg, &d->pmem_page_list);
+    page_list_add_tail(pg,
+                       (type == XENMEM_pmem_map_type_data) ?
+                       &d->pmem_page_list :
+                       &d->pmem_unmapped_page_list);
     spin_unlock(&d->pmem_lock);
 
     return 0;
 }
 
 static int pmem_unassign_page(struct domain *d, struct page_info *pg,
-                              unsigned long gfn)
+                              unsigned long gfn, unsigned int type)
 {
-    int rc;
+    int rc = 0;
 
     spin_lock(&d->pmem_lock);
-    page_list_del(pg, &d->pmem_page_list);
+    page_list_del(pg,
+                  (type == XENMEM_pmem_map_type_data) ?
+                  &d->pmem_page_list :
+                  &d->pmem_unmapped_page_list);
     spin_unlock(&d->pmem_lock);
 
-    rc = guest_physmap_remove_page(d, _gfn(gfn), _mfn(page_to_mfn(pg)), 0);
+    if ( type == XENMEM_pmem_map_type_data )
+        rc = guest_physmap_remove_page(d, _gfn(gfn), _mfn(page_to_mfn(pg)), 0);
 
     page_set_owner(pg, NULL);
     pg->count_info = PGC_state_free | PGC_pmem_page;
@@ -673,6 +683,7 @@ int pmem_populate(struct xen_pmem_map_args *args)
     unsigned long mfn = args->mfn + i;
     unsigned long emfn = args->mfn + args->nr_mfns;
     unsigned long gfn = args->gfn + i;
+    unsigned int type = args->type;
     struct page_info *page;
     int rc = 0, err = 0;
 
@@ -706,7 +717,7 @@ int pmem_populate(struct xen_pmem_map_args *args)
             break;
         }
 
-        rc = pmem_assign_page(d, page, gfn);
+        rc = pmem_assign_page(d, page, gfn, type);
         if ( rc )
             break;
     }
@@ -714,7 +725,7 @@ int pmem_populate(struct xen_pmem_map_args *args)
  out:
     if ( rc && rc != -ERESTART )
         while ( i-- && !err )
-            err = pmem_unassign_page(d, mfn_to_page(--mfn), --gfn);
+            err = pmem_unassign_page(d, mfn_to_page(--mfn), --gfn, type);
 
     spin_unlock(&pmem_data_lock);
 

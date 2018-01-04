@@ -325,6 +325,10 @@ struct domain
 
     spinlock_t       pmem_lock;       /* protect all following pmem_ fields */
     struct page_list_head pmem_page_list; /* linked list of PMEM pages      */
+    struct page_list_head pmem_unmapped_page_list; /* linked list of PMEM pages
+                                                    * owned by this domain but
+                                                    * not mapped to this domain
+                                                    */
 
     /* Scheduling. */
     void            *sched_priv;    /* scheduler-specific data */

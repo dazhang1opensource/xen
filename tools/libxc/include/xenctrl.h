@@ -2701,13 +2701,17 @@ int xc_nvdimm_pmem_setup_data(xc_interface *xch,
  *  mfn:     the start MFN of the PMEM pages
  *  gfn:     the start GFN of the target guest physical pages
  *  nr_mfns: the number of PMEM pages to be mapped
+ *  type:    XC_PMEM_MAP_TYPE_DATA  - PMEM pages are used for vNVDIMM data
+ *           XC_PMEM_MAP_TYPE_LABEL - PMEM pages are used for vNVDIMM label
  *
  * Return:
  *  On success, return 0. Otherwise, return a non-zero error code.
  */
+#define XC_PMEM_MAP_TYPE_DATA   XENMEM_pmem_map_type_data
+#define XC_PMEM_MAP_TYPE_LABEL  XENMEM_pmem_map_type_label
 int xc_domain_populate_pmem_map(xc_interface *xch, uint32_t domid,
                                 unsigned long mfn, unsigned long gfn,
-                                unsigned long nr_mfns);
+                                unsigned long nr_mfns, unsigned int label);
 
 /* Compat shims */
 #include "xenctrl_compat.h"
