@@ -1334,6 +1334,12 @@ then B<BACKEND> specifies the start MFN of the host PMEM region.
 
 Specifies the number of pages of the host backend.
 
+=item B<nr_label_pages=NUMBER>
+
+Specifise the number of pages of the host backend that are used as the label
+storage area of vNVDIMM. It must be equal to or larger than 32 pages (128 KB)
+and smaller than B<nr_pages>.
+
 =back
 
 =item B<dm_restrict=BOOLEAN>

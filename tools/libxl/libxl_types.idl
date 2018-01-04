@@ -826,6 +826,7 @@ libxl_device_vnvdimm = Struct("device_vnvdimm", [
     ("backend_domname", string),
     ("devid",           libxl_devid),
     ("nr_pages",        uint64),
+    ("nr_label_pages",  uint64),
     ("u", KeyedUnion(None, libxl_vnvdimm_backend_type, "backend_type",
             [("mfn", uint64),
             ])),
