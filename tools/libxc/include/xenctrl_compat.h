@@ -167,6 +167,9 @@ int xc_hvm_inject_trap(
 int xc_domain_pin_memory_cacheattr(
     xc_interface *xch, uint32_t domid, uint64_t start, uint64_t end,
     uint32_t type);
+int xc_nvdimm_pmem_rw(
+    xc_interface *xch, uint32_t domid,
+    unsigned long paddr, void *buffer, unsigned long length, bool is_write);
 
 #endif /* XC_WANT_COMPAT_DEVICEMODEL_API */
 

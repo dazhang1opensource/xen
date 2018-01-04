@@ -354,6 +354,22 @@ int xendevicemodel_pin_memory_cacheattr(
     uint32_t type);
 
 /**
+ * Read/Write the host PMEM that is owned by the specified domain.
+ *
+ * @parm domd a handle to an open devicemodel interface.
+ * @parm domid domid the domain id to be serviced.
+ * @parm paddr the start host physical address of PMEM to be accessed.
+ * @parm buf the buffer where the data of PMEM will be copied to/from.
+ * @parm length the number of bytes to be accessed.
+ * @parm is_write true - copy from @buf to PMEM, false - copy from PMEM to @buf.
+ *
+ * @return 0 on success, -1 on failure.
+ */
+int xendevicemodel_pmem_rw(
+    xendevicemodel_handle *dmod, domid_t domid,
+    uint64_t paddr, void *buf, uint64_t length, uint8_t is_write);
+
+/**
  * This function restricts the use of this handle to the specified
  * domain.
  *

@@ -26,6 +26,9 @@
 
 int pmem_register(unsigned long smfn, unsigned long emfn, unsigned int pxm);
 int pmem_do_sysctl(struct xen_sysctl_nvdimm_op *nvdimm);
+int pmem_rw(struct domain *d, unsigned long paddr, XEN_GUEST_HANDLE(void) buf,
+            unsigned long len, unsigned long offset, unsigned long *done,
+            bool is_write);
 
 #ifdef CONFIG_X86
 
