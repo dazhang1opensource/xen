@@ -1183,6 +1183,7 @@ static int qmp_register_vnvdimm_callback(libxl__qmp_handler *qmp,
     const char *id, *expected_id;
     unsigned int i, slot;
     unsigned long gpa, size, mfn, gpfn, nr_pages;
+    unsigned long label_page_offset, label_smfn;
     int rc = 0;
 
     for (i = 0; (obj = libxl__json_array_get(o, i)); i++) {
@@ -1259,12 +1260,27 @@ static int qmp_register_vnvdimm_callback(libxl__qmp_handler *qmp,
             goto out;
         }
 
-        rc = libxl_vnvdimm_add_pages(gc, qmp->domid, mfn, gpfn, nr_pages);
+        rc = libxl_vnvdimm_add_pages(gc, qmp->domid, mfn, gpfn, nr_pages,
+                                     LIBXL_VNVDIMM_PAGE_TYPE_DATA);
         if (rc) {
             LOG(ERROR,
                 "Cannot map PMEM pages for QEMU memory device %s, "
                 "mfn 0x%lx, gpfn 0x%lx, nr 0x%lx, rc %d",
                 id, mfn, gpfn, nr_pages, rc);
+            rc = -ERROR_FAIL;
+            goto out;
+        }
+
+        label_page_offset = vnvdimm->nr_pages - vnvdimm->nr_label_pages;
+        label_smfn = mfn + label_page_offset;
+        rc = libxl_vnvdimm_add_pages(gc, qmp->domid,
+                                     label_smfn, 0, vnvdimm->nr_label_pages,
+                                     LIBXL_VNVDIMM_PAGE_TYPE_LABEL);
+        if (rc) {
+            LOG(ERROR,
+                "Cannot map PMEM pages for labels of QEMU memory device %s, "
+                "mfn 0x%lx, nr 0x%lx, rc %d",
+                id, label_smfn, vnvdimm->nr_label_pages, rc);
             rc = -ERROR_FAIL;
             goto out;
         }

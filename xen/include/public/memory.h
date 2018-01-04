@@ -658,6 +658,9 @@ struct xen_pmem_map {
     unsigned long mfn;
     unsigned long gfn;
     unsigned int nr_mfns;
+    unsigned int type;
+#define XENMEM_pmem_map_type_data   0 /* PMEM pages are used for vNVDIMM data */
+#define XENMEM_pmem_map_type_label  1 /* PMEM pages are used fro vNVDIMM label */
 };
 typedef struct xen_pmem_map xen_pmem_map_t;
 DEFINE_XEN_GUEST_HANDLE(xen_pmem_map_t);

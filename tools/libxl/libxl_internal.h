@@ -4415,8 +4415,11 @@ static inline bool libxl__string_is_default(char **s)
 }
 
 #if defined(__linux__)
+#define LIBXL_VNVDIMM_PAGE_TYPE_DATA    XC_PMEM_MAP_TYPE_DATA
+#define LIBXL_VNVDIMM_PAGE_TYPE_LABEL   XC_PMEM_MAP_TYPE_LABEL
 int libxl_vnvdimm_add_pages(libxl__gc *gc, uint32_t domid,
-                            xen_pfn_t mfn, xen_pfn_t gpfn, xen_pfn_t nr_pages);
+                            xen_pfn_t mfn, xen_pfn_t gpfn, xen_pfn_t nr_pages,
+                            unsigned int page_type);
 #endif /* __linux__ */
 
 #endif

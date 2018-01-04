@@ -2435,14 +2435,18 @@ int xc_domain_soft_reset(xc_interface *xch,
 
 int xc_domain_populate_pmem_map(xc_interface *xch, uint32_t domid,
                                 unsigned long mfn, unsigned long gfn,
-                                unsigned long nr_mfns)
+                                unsigned long nr_mfns, unsigned int type)
 {
     struct xen_pmem_map args = {
         .domid   = domid,
         .mfn     = mfn,
         .gfn     = gfn,
         .nr_mfns = nr_mfns,
+        .type    = type,
     };
+
+    if ( type != XC_PMEM_MAP_TYPE_DATA && type != XC_PMEM_MAP_TYPE_LABEL )
+        return -1;
 
     return do_memory_op(xch, XENMEM_populate_pmem_map, &args, sizeof(args));
 }

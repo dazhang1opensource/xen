@@ -200,19 +200,26 @@ int libxl_vnvdimm_copy_config(libxl_ctx *ctx,
 #if defined(__linux__)
 
 int libxl_vnvdimm_add_pages(libxl__gc *gc, uint32_t domid,
-                            xen_pfn_t mfn, xen_pfn_t gpfn, xen_pfn_t nr_pages)
+                            xen_pfn_t mfn, xen_pfn_t gpfn, xen_pfn_t nr_pages,
+                            unsigned int type)
 {
     unsigned int nr;
-    int ret;
+    int ret = 0;
+
+    if (type != LIBXL_VNVDIMM_PAGE_TYPE_DATA &&
+        type != LIBXL_VNVDIMM_PAGE_TYPE_LABEL) {
+        LOG(ERROR, "invalid vNVDIMM page type 0x%x", type);
+        return ERROR_INVAL;
+    }
 
     while (nr_pages) {
         nr = min(nr_pages, (unsigned long)UINT_MAX);
 
-        ret = xc_domain_populate_pmem_map(CTX->xch, domid, mfn, gpfn, nr);
+        ret = xc_domain_populate_pmem_map(CTX->xch, domid, mfn, gpfn, nr, type);
         if (ret && ret != -ERESTART) {
             LOG(ERROR, "failed to map PMEM pages, mfn 0x%" PRI_xen_pfn ", "
-                "gpfn 0x%" PRI_xen_pfn ", nr_pages %u, err %d",
-                mfn, gpfn, nr, ret);
+                "gpfn 0x%" PRI_xen_pfn ", nr_pages %u, type %u, err %d",
+                mfn, gpfn, nr, type, ret);
             break;
         }
 

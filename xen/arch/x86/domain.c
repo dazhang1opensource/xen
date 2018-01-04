@@ -1849,7 +1849,8 @@ static int relinquish_memory(
 {
     struct page_info  *page;
     unsigned long     x, y;
-    bool              is_pmem_list = (list == &d->pmem_page_list);
+    bool              is_pmem_list = (list == &d->pmem_page_list ||
+                                      list == &d->pmem_unmapped_page_list);
     int               ret = 0;
 
     /* Use a recursive lock, as we may enter 'free_domheap_page'. */
@@ -2041,6 +2042,9 @@ int domain_relinquish_resources(struct domain *d)
         if ( is_hvm_domain(d) )
         {
             ret = relinquish_memory(d, &d->pmem_page_list, ~0UL);
+            if ( ret )
+                return ret;
+            ret = relinquish_memory(d, &d->pmem_unmapped_page_list, ~0UL);
             if ( ret )
                 return ret;
         }
