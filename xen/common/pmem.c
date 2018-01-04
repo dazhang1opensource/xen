@@ -433,21 +433,46 @@ static int pmem_setup_mgmt(unsigned long smfn, unsigned long emfn)
     return rc;
 }
 
-static struct pmem *find_mgmt_region(unsigned long smfn, unsigned long emfn)
+static struct pmem *find_region(unsigned long smfn, unsigned long emfn,
+                                unsigned int type)
 {
-    struct list_head *cur;
+    struct list_head *cur, *list = NULL;
+    spinlock_t *lock = NULL;
 
-    ASSERT(spin_is_locked(&pmem_mgmt_lock));
-
-    list_for_each(cur, &pmem_mgmt_regions)
+    switch ( type )
     {
-        struct pmem *mgmt = list_entry(cur, struct pmem, link);
+    case PMEM_REGION_TYPE_MGMT:
+        list = &pmem_mgmt_regions;
+        lock = &pmem_mgmt_lock;
+        break;
 
-        if ( smfn >= mgmt->smfn && emfn <= mgmt->emfn )
-            return mgmt;
+    case PMEM_REGION_TYPE_DATA:
+        list = &pmem_data_regions;
+        lock = &pmem_data_lock;
+        break;
+    }
+
+    ASSERT(spin_is_locked(lock));
+
+    list_for_each(cur, list)
+    {
+        struct pmem *region = list_entry(cur, struct pmem, link);
+
+        if ( smfn >= region->smfn && emfn <= region->emfn )
+            return region;
     }
 
     return NULL;
+}
+
+static struct pmem *find_mgmt_region(unsigned long smfn, unsigned long emfn)
+{
+    return find_region(smfn, emfn, PMEM_REGION_TYPE_MGMT);
+}
+
+static struct pmem *find_data_region(unsigned long smfn, unsigned long emfn)
+{
+    return find_region(smfn, emfn, PMEM_REGION_TYPE_DATA);
 }
 
 static int pmem_setup_data(unsigned long smfn, unsigned long emfn,
@@ -615,6 +640,116 @@ int pmem_do_sysctl(struct xen_sysctl_nvdimm_op *nvdimm)
     }
 
     nvdimm->err = -rc;
+
+    return rc;
+}
+
+static bool check_pmem_pages_ownership(
+    struct domain *d, unsigned long smfn, unsigned long emfn)
+{
+    struct page_info *page;
+
+    while ( smfn < emfn )
+    {
+        page = mfn_to_page(smfn);
+
+        if ( page_get_owner(page) != d )
+            return false;
+
+        smfn++;
+    }
+
+    return true;
+}
+
+int pmem_rw(struct domain *d, unsigned long paddr,
+            XEN_GUEST_HANDLE(void) buf_hnd, unsigned long len,
+            unsigned long offset, unsigned long *done, bool is_write)
+{
+    unsigned long smfn, emfn;
+    unsigned long buf_offset = offset, pmem_offset;
+    unsigned long copy_size, total = 0;
+    struct pmem *pmem;
+    void *pmem_buf, *pmem_ptr;
+    mfn_t pmem_mfn[1];
+    int rc = 0;
+
+    if ( offset >= len )
+        return 0;
+
+    if ( !guest_handle_okay(buf_hnd, len) )
+        return -EINVAL;
+
+    paddr += offset;
+    len -= offset;
+    smfn = PFN_DOWN(paddr);
+    emfn = PFN_UP(paddr + len);
+
+    if ( smfn >= emfn )
+        return -EINVAL;
+
+    spin_lock(&pmem_data_lock);
+
+    pmem = find_data_region(smfn, emfn);
+    if ( !pmem )
+    {
+        rc = -EINVAL;
+        goto out;
+    }
+
+    if ( !check_pmem_pages_ownership(d, smfn, emfn) )
+    {
+        rc = -EINVAL;
+        goto out;
+    }
+
+    while ( smfn < emfn )
+    {
+        if ( total && hypercall_preempt_check() )
+        {
+            rc = -ERESTART;
+            break;
+        }
+
+        pmem_mfn[0] = _mfn(smfn);
+        pmem_buf = vmap(pmem_mfn, 1);
+        if ( !pmem_buf )
+        {
+            rc = -EFAULT;
+            break;
+        }
+
+        pmem_offset = paddr & (PAGE_SIZE - 1);
+        pmem_ptr = pmem_buf + pmem_offset;
+        copy_size = min(PAGE_SIZE - pmem_offset, len);
+
+        if ( is_write )
+        {
+            rc = copy_from_guest_offset(pmem_ptr, buf_hnd, buf_offset, copy_size);
+            pmem_persistent(pmem_ptr, copy_size);
+        }
+        else
+            rc = copy_to_guest_offset(buf_hnd, buf_offset, pmem_ptr, copy_size);
+
+        vunmap(pmem_buf);
+
+        if ( rc )
+        {
+            rc = -EFAULT;
+            break;
+        }
+
+        smfn += 1;
+        paddr += copy_size;
+        buf_offset += copy_size;
+        len -= copy_size;
+        total += copy_size;
+    }
+
+    *done = total;
+
+ out:
+    spin_unlock(&pmem_data_lock);
 
     return rc;
 }

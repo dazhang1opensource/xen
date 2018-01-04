@@ -136,6 +136,14 @@ int xc_domain_pin_memory_cacheattr(
                                                type);
 }
 
+int xc_nvdimm_pmem_rw(xc_interface *xch, uint32_t domid,
+                      unsigned long paddr, void *buffer, unsigned long length,
+                      bool is_write)
+{
+    return xendevicemodel_pmem_rw(xch->dmod, domid,
+                                  paddr, buffer, length, is_write);
+}
+
 /*
  * Local variables:
  * mode: C

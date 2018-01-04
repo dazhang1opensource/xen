@@ -17,6 +17,7 @@
 #include <xen/event.h>
 #include <xen/guest_access.h>
 #include <xen/hypercall.h>
+#include <xen/pmem.h>
 #include <xen/sched.h>
 
 #include <asm/hap.h>
@@ -359,6 +360,7 @@ static int dm_op(const struct dmop_args *op_args)
         [XEN_DMOP_remote_shutdown]                  = sizeof(struct xen_dm_op_remote_shutdown),
         [XEN_DMOP_relocate_memory]                  = sizeof(struct xen_dm_op_relocate_memory),
         [XEN_DMOP_pin_memory_cacheattr]             = sizeof(struct xen_dm_op_pin_memory_cacheattr),
+        [XEN_DMOP_pmem_rw]                          = sizeof(struct xen_dm_op_pmem_rw),
     };
 
     rc = rcu_lock_remote_domain_by_id(op_args->domid, &d);
@@ -692,6 +694,42 @@ static int dm_op(const struct dmop_args *op_args)
         break;
     }
 
+#ifdef CONFIG_NVDIMM_PMEM
+    case XEN_DMOP_pmem_rw:
+    {
+        struct xen_dm_op_pmem_rw *data = &op.u.pmem_rw;
+        const struct xen_dm_op_buf *buf;
+        uint64_t offset, done = 0;
+
+        rc = -EINVAL;
+
+        if ( data->pad[0] || data->pad[1] || data->pad[2] || data->pad[3] ||
+             data->pad[4] || data->pad[5] || data->pad[6] )
+            break;
+
+        if ( op_args->nr_bufs != 2 )
+            break;
+
+        buf = &op_args->buf[1];
+        if ( buf->size < data->length )
+            break;
+
+        offset = data->done;
+        if ( offset > data->length )
+            break;
+
+        rc = pmem_rw(d, data->paddr, buf->h, data->length, offset, &done,
+                     data->is_write);
+        if ( !rc || rc == -ERESTART )
+        {
+            data->done += done;
+            const_op = false;
+        }
+
+        break;
+    }
+#endif /* CONFIG_NVDIMM_PMEM */
+
     default:
         rc = -EOPNOTSUPP;
         break;
@@ -724,6 +762,7 @@ CHECK_dm_op_inject_msi;
 CHECK_dm_op_remote_shutdown;
 CHECK_dm_op_relocate_memory;
 CHECK_dm_op_pin_memory_cacheattr;
+CHECK_dm_op_pmem_rw;
 
 int compat_dm_op(domid_t domid,
                  unsigned int nr_bufs,

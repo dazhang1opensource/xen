@@ -407,6 +407,24 @@ struct xen_dm_op_pin_memory_cacheattr {
     uint32_t pad;
 };
 
+/*
+ * XEN_DMOP_pmem_rw: Read/Write the host PMEM assigned to the domain
+ *                   being emulated by the device model.
+ *
+ * DMOP buf 1 is where the PMEM data is copied to/from.
+ */
+
+#define XEN_DMOP_pmem_rw 19
+
+struct xen_dm_op_pmem_rw {
+    uint64_t paddr;     /* IN - start physical address of PMEM */
+    uint64_t length;    /* IN - # of bytes */
+    uint64_t done;      /* IN/OUT - # of copied bytes, used for hypercall
+                           continuation, must be set to zero by the caller */
+    uint8_t is_write;   /* IN - true: copy to PMEM, false: copy from PMEM */
+    uint8_t pad[7];
+};
+
 struct xen_dm_op {
     uint32_t op;
     uint32_t pad;
@@ -430,6 +448,7 @@ struct xen_dm_op {
         struct xen_dm_op_remote_shutdown remote_shutdown;
         struct xen_dm_op_relocate_memory relocate_memory;
         struct xen_dm_op_pin_memory_cacheattr pin_memory_cacheattr;
+        struct xen_dm_op_pmem_rw pmem_rw;
     } u;
 };
 
