@@ -292,6 +292,7 @@ struct domain *domain_create(domid_t domid, unsigned int domcr_flags,
 
     spin_lock_init(&d->pmem_lock);
     INIT_PAGE_LIST_HEAD(&d->pmem_page_list);
+    INIT_PAGE_LIST_HEAD(&d->pmem_unmapped_page_list);
 
     spin_lock_init(&d->node_affinity_lock);
     d->node_affinity = NODE_MASK_ALL;

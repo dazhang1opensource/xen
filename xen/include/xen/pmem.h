@@ -40,6 +40,7 @@ struct xen_pmem_map_args {
     unsigned long mfn;     /* start MFN of pmems page to be mapped */
     unsigned long gfn;     /* start GFN of target domain */
     unsigned long nr_mfns; /* number of pmem pages to be mapped */
+    unsigned int type;     /* one of XENMEM_pmem_map_type_* */
 
     /* For preemption ... */
     unsigned long nr_done; /* number of pmem pages processed so far */

@@ -1436,6 +1436,7 @@ long do_memory_op(unsigned long cmd, XEN_GUEST_HANDLE_PARAM(void) arg)
         args.mfn = map.mfn;
         args.gfn = map.gfn;
         args.nr_mfns = map.nr_mfns;
+        args.type = map.type;
         args.nr_done = start_extent;
         args.preempted = 0;
 
