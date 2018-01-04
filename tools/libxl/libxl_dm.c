@@ -963,6 +963,9 @@ static uint64_t libxl__build_dm_vnvdimm_args(
     flexarray_append(dm_args, "-device");
     arg = GCSPRINTF("nvdimm,id=xen_nvdimm%d,memdev=mem%d",
                     dev_no + 1, dev_no + 1);
+    if (dev->nr_label_pages)
+        arg = GCSPRINTF("%s,label-size=%"PRIu64,
+                        arg, dev->nr_label_pages << XC_PAGE_SHIFT);
     flexarray_append(dm_args, arg);
 
     return size;
