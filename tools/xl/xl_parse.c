@@ -874,6 +874,18 @@ static int parse_vnvdimm_config(libxl_device_vnvdimm *vnvdimm, char *token)
             return 1;
         }
         vnvdimm->nr_pages = val;
+    } else if (MATCH_OPTION("nr_label_pages", token, oparg)) {
+        val = parse_ulong(oparg);
+
+        if (val < 32)
+        {
+            fprintf(stderr, "ERROR: vNVDIMM label size (%s pages) smaller than "
+                    "the minimal requirement (32 pages, 128KB)\n",
+                    oparg);
+            return 1;
+        }
+
+        vnvdimm->nr_label_pages = val;
     } else if (MATCH_OPTION("backend", token, oparg)) {
         /* Skip: handled by parse_vnvdimms() */
     } else {
@@ -885,7 +897,8 @@ static int parse_vnvdimm_config(libxl_device_vnvdimm *vnvdimm, char *token)
 }
 
 /*
- * vnvdimms = [ 'type=<mfn>, backend=<base_mfn>, nr_pages=<N>', ... ]
+ * vnvdimms = [ 'type=<mfn>, backend=<base_mfn>, nr_pages=<N>, nr_label_pages=<M>',
+ *              ... ]
  *
  * Return the number of pages of all vNVDIMM devices.
  */
@@ -931,6 +944,13 @@ static unsigned long parse_vnvdimms(XLU_Config *config,
             if (rc)
                 exit(-ERROR_FAIL);
         } while ((p = strtok(NULL, ",")) != NULL);
+
+        if (vnvdimm->nr_pages <= vnvdimm->nr_label_pages) {
+            fprintf(stderr, "ERROR: vNVDIMM size (%lu pages) not larger than "
+                    "its label size (%lu pages)\n",
+                    vnvdimm->nr_pages, vnvdimm->nr_label_pages);
+            exit(-ERROR_FAIL);
+        }
 
         switch (vnvdimm->backend_type)
         {
