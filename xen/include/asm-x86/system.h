@@ -17,6 +17,12 @@
 #define clflush(a) \
     asm volatile ( "clflush (%0)" : : "r"(a) )
 
+#define clflushopt(a) \
+    asm volatile ( ".byte 0x66; clflush (%0)" : : "r" (a) )
+
+#define clwb(a) \
+    asm volatile ( ".byte 0x66; xsaveopt (%0)" : : "r" (a) )
+
 #define nop() \
     asm volatile ( "nop" )
 
