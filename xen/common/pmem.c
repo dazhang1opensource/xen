@@ -754,6 +754,27 @@ void pmem_page_cleanup(struct page_info *page)
     set_gpfn_from_mfn(page_to_mfn(page), INVALID_M2P_ENTRY);
 }
 
+void pmem_persistent(void *p, unsigned long length)
+{
+    unsigned long clflush_size = current_cpu_data.x86_clflush_size;
+    unsigned long s = (unsigned long)p & ~(clflush_size - 1);
+    unsigned long e = (unsigned long)p + length;
+
+    while ( s < e )
+    {
+        if ( cpu_has_clwb )
+            clwb(s);
+        else if ( cpu_has_clflushopt )
+            clflushopt(s);
+        else if ( cpu_has_clflush )
+            clflush(s);
+
+        s += clflush_size;
+    }
+
+    asm volatile("sfence" : : : "memory");
+}
+
 int __init pmem_dom0_setup_permission(struct domain *d)
 {
     struct list_head *cur;

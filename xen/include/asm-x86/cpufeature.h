@@ -96,6 +96,8 @@
 #define cpu_has_rdseed          boot_cpu_has(X86_FEATURE_RDSEED)
 #define cpu_has_smap            boot_cpu_has(X86_FEATURE_SMAP)
 #define cpu_has_sha             boot_cpu_has(X86_FEATURE_SHA)
+#define cpu_has_clflushopt      boot_cpu_has(X86_FEATURE_CLFLUSHOPT)
+#define cpu_has_clwb            boot_cpu_has(X86_FEATURE_CLWB)
 
 /* CPUID level 0x80000007.edx */
 #define cpu_has_itsc            boot_cpu_has(X86_FEATURE_ITSC)
