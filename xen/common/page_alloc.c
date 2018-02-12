@@ -151,6 +151,10 @@
 #define p2m_pod_offline_or_broken_replace(pg) BUG_ON(pg != NULL)
 #endif
 
+#ifdef CONFIG_NVDIMM_PMEM
+#include <xen/acpi.h>
+#endif
+
 /*
  * Comma-separated list of hexadecimal page numbers containing bad bytes.
  * e.g. 'badpage=0x3f45,0x8a321'.
@@ -1819,14 +1823,34 @@ void __init end_boot_allocator(void)
     printk("\n");
 }
 
+static void __init scrub_ram_pages(unsigned long smfn, unsigned long emfn)
+{
+    struct page_info *pg;
+    unsigned long mfn;
+
+    for ( mfn = smfn; mfn < emfn; mfn++ )
+    {
+        pg = mfn_to_page(mfn);
+
+        /* Check the mfn is valid and page is free. */
+        if ( !mfn_valid(_mfn(mfn)) || !page_state_is(pg, free) )
+            continue;
+
+        scrub_one_page(pg);
+    }
+}
+
 static void __init smp_scrub_heap_pages(void *data)
 {
-    unsigned long mfn, start, end;
-    struct page_info *pg;
+    unsigned long start, end;
     struct scrub_region *r;
     unsigned int temp_cpu, cpu_idx = 0;
     nodeid_t node;
     unsigned int cpu = smp_processor_id();
+#ifdef CONFIG_NVDIMM_PMEM
+    unsigned long pmem_smfn, pmem_emfn;
+    bool found;
+#endif
 
     if ( data )
         r = data;
@@ -1860,16 +1884,24 @@ static void __init smp_scrub_heap_pages(void *data)
     else
         end = start + chunk_size;
 
-    for ( mfn = start; mfn < end; mfn++ )
+#ifndef CONFIG_NVDIMM_PMEM
+    scrub_ram_pages(start, end);
+#else
+    while ( start < end )
     {
-        pg = mfn_to_page(mfn);
+        found = acpi_nfit_boot_search_pmem(start, end, &pmem_smfn, &pmem_emfn);
 
-        /* Check the mfn is valid and page is free. */
-        if ( !mfn_valid(_mfn(mfn)) || !page_state_is(pg, free) )
-            continue;
+        if ( !found )
+        {
+            scrub_ram_pages(start, end);
+            break;
+        }
 
-        scrub_one_page(pg);
+        if ( start < pmem_smfn )
+            scrub_ram_pages(start, pmem_smfn);
+        start = pmem_emfn;
     }
+#endif
 }
 
 static int __init find_non_smt(unsigned int node, cpumask_t *dest)
