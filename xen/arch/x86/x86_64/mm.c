@@ -115,7 +115,7 @@ static unsigned long alloc_hotadd_mfn(struct mem_hotadd_info *info)
 {
     unsigned mfn;
 
-    ASSERT((info->cur + ( 1UL << PAGETABLE_ORDER) < info->epfn) &&
+    ASSERT((info->cur + (1UL << PAGETABLE_ORDER) <= info->epfn) &&
             info->cur >= info->spfn);
 
     mfn = info->cur;
